@@ -1,3 +1,5 @@
+#include "tic_toc.h"
+
 #include <ros/ros.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/point_cloud.h>
@@ -25,7 +27,7 @@ void updateViewer (visualization::PCLVisualizer::Ptr viewer, PointCloud<PointXYZ
   viewer->removePointCloud("cloud");
   viewer->addPointCloud<PointXYZRGB>(cloud, "cloud");
   viewer->removePointCloud("normals");
-  viewer->addPointCloudNormals<PointXYZRGB, Normal> (cloud, normals, 25, 0.15, "normals");
+  viewer->addPointCloudNormals<PointXYZRGB, Normal> (cloud, normals, 1, 0.1, "normals");
   viewer->spinOnce();
 }
 
@@ -90,12 +92,27 @@ PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, doubl
 
 void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr& cloud) {
   PointCloud<PointXYZRGB>::Ptr cloud_conv (new PointCloud<PointXYZRGB> (*cloud));
-  
-  cutOff(cloud_conv);
-  statOutRemoval(cloud_conv);
-  downSample(cloud_conv, 0.05, 0.05, 0.05);
+  ROS_ERROR("SIZE1: %lu", cloud_conv->points.size());
 
+  tic(); 
+  cutOff(cloud_conv);
+  ROS_ERROR("CUTOFF: %f", toc());
+
+  //tic();
+  //statOutRemoval(cloud_conv);
+  //ROS_ERROR("STAT: %f", toc());
+
+  tic();
+  downSample(cloud_conv, 0.05, 0.05, 0.05);
+  ROS_ERROR("DOWNSAMPLE: %f", toc());
+
+  ROS_ERROR("SIZE2: %lu", cloud_conv->points.size());
+
+  tic();
   PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_conv, 0.05);
+  ROS_ERROR("NORMALS: %f", toc());
+
+  ROS_ERROR("NORMAL SIZE: %lu", cloud_normals->points.size());
 
   updateViewer(viewer, cloud_conv, cloud_normals);
 }

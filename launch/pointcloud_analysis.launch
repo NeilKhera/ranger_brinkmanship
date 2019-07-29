@@ -1,4 +1,9 @@
 <launch>
-  <include file="$(find realsense2_camera)/launch/rs_rgbd.launch"/>
+  <include file="$(find realsense2_camera)/launch/rs_rgbd.launch">
+    <arg name="fisheye_fps" value="15"/>
+    <arg name="depth_fps" value="15"/>
+    <arg name="infra_fps" value="15"/>
+    <arg name="color_fps" value="15"/>
+  </include>
   <node pkg="pointcloud_analysis" type="pointcloud_analysis" name="pointcloud_analysis"/>
 </launch>
