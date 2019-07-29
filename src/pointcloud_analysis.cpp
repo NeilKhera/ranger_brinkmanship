@@ -1,14 +1,13 @@
 #include <ros/ros.h>
-#include <sensor_msgs/PointCloud2.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
-#include <pcl/filters/uniform_sampling.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/integral_image_normal.h>
 #include <pcl/visualization/pcl_visualizer.h>
-#include <Eigen/Dense>
 
 using namespace pcl;
 
@@ -30,32 +29,53 @@ void updateViewer (visualization::PCLVisualizer::Ptr viewer, PointCloud<PointXYZ
   viewer->spinOnce();
 }
 
-PointCloud<PointXYZRGB> downSample(PointCloud<PointXYZRGB>::Ptr cloud, double xDim, double yDim, double zDim) {
-  PointCloud<PointXYZRGB> cloud_filtered;
+void cutOff(PointCloud<PointXYZRGB>::Ptr cloud) {
+  PassThrough<PointXYZRGB> pt;
+  pt.setInputCloud(cloud);
 
-  VoxelGrid<PointXYZRGB> sor;
-  sor.setInputCloud(cloud);
-  sor.setLeafSize(xDim, yDim, zDim);
-  sor.filter(cloud_filtered);
+  pt.setFilterFieldName("x");
+  pt.setFilterLimits(-100, 100);
+  pt.filter(*cloud);
 
-  return cloud_filtered;
+  pt.setFilterFieldName("y");
+  pt.setFilterLimits(-100, 100);
+  pt.filter(*cloud);
+
+  pt.setFilterFieldName("z");
+  pt.setFilterLimits(-100, 100);
+  pt.filter(*cloud);
 }
 
-PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::ConstPtr cloud, double radius) {
+void statOutRemoval(PointCloud<PointXYZRGB>::Ptr cloud) {
+  StatisticalOutlierRemoval<PointXYZRGB> sor;
+  sor.setInputCloud(cloud);
+  sor.setMeanK(10);
+  sor.setStddevMulThresh(2.0);
+  sor.setKeepOrganized(true);
+  sor.filter(*cloud);
+}
+
+void downSample(PointCloud<PointXYZRGB>::Ptr cloud, double xDim, double yDim, double zDim) {
+  VoxelGrid<PointXYZRGB> vox;
+  vox.setInputCloud(cloud);
+  vox.setLeafSize(xDim, yDim, zDim);
+  vox.filter(*cloud);
+}
+
+PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, double radius) {
+  PointCloud<Normal>::Ptr normals (new PointCloud<Normal>);
+  search::KdTree<PointXYZRGB>::Ptr kdtree (new search::KdTree<PointXYZRGB> ());
+
   NormalEstimation<PointXYZRGB, Normal> ne;
   ne.setInputCloud(cloud);
-
-  search::KdTree<PointXYZRGB>::Ptr kdtree (new search::KdTree<PointXYZRGB> ());
   ne.setSearchMethod(kdtree);
-
-  PointCloud<Normal>::Ptr cloud_normals (new PointCloud<Normal>);
-
   ne.setRadiusSearch(radius);
-  ne.compute(*cloud_normals);
-  return cloud_normals;
+  ne.compute(*normals);
+  
+  return normals;
 }
 
-PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, double depth, double smoothing) {
+/*PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, double depth, double smoothing) {
   PointCloud<Normal>::Ptr normals (new PointCloud<Normal>);
 
   IntegralImageNormalEstimation<PointXYZRGB, Normal> ne;
@@ -66,15 +86,16 @@ PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, doubl
   ne.compute(*normals);
 
   return normals;
-}
+}*/
 
 void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr& cloud) {
   PointCloud<PointXYZRGB>::Ptr cloud_conv (new PointCloud<PointXYZRGB> (*cloud));
   
-  //PointCloud<PointXYZRGB>::Ptr downsampled_ptr (new PointCloud<PointXYZRGB>);
-  //*downsampled_ptr = downSample(cloud_conv, 0.05, 0.05, 0.05);
-  
-  PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_conv, 0.02, 10.0);
+  cutOff(cloud_conv);
+  statOutRemoval(cloud_conv);
+  downSample(cloud_conv, 0.05, 0.05, 0.05);
+
+  PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_conv, 0.05);
 
   updateViewer(viewer, cloud_conv, cloud_normals);
 }
@@ -84,7 +105,8 @@ int main(int argc, char **argv) {
   ros::NodeHandle n;
   viewer = createViewer();
   
-  ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>("/camera/depth_registered/points", 1, pointcloudCallback);
+  ros::Subscriber sub_cloud =
+	  n.subscribe<PointCloud<PointXYZRGB>>("/camera/depth_registered/points", 1, pointcloudCallback);
 
   ros::spin();
   return 0;
