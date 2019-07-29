@@ -4,6 +4,7 @@
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/uniform_sampling.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/integral_image_normal.h>
 #include <pcl/visualization/pcl_visualizer.h>
@@ -29,10 +30,10 @@ void updateViewer (visualization::PCLVisualizer::Ptr viewer, PointCloud<PointXYZ
   viewer->spinOnce();
 }
 
-PCLPointCloud2 downSample(PCLPointCloud2ConstPtr cloud, double xDim, double yDim, double zDim) {
-  PCLPointCloud2 cloud_filtered;
+PointCloud<PointXYZRGB> downSample(PointCloud<PointXYZRGB>::Ptr cloud, double xDim, double yDim, double zDim) {
+  PointCloud<PointXYZRGB> cloud_filtered;
 
-  VoxelGrid<PCLPointCloud2> sor;
+  VoxelGrid<PointXYZRGB> sor;
   sor.setInputCloud(cloud);
   sor.setLeafSize(xDim, yDim, zDim);
   sor.filter(cloud_filtered);
@@ -54,7 +55,7 @@ PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::ConstPtr cloud, 
   return cloud_normals;
 }
 
-/*PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, double depth, double smoothing) {
+PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, double depth, double smoothing) {
   PointCloud<Normal>::Ptr normals (new PointCloud<Normal>);
 
   IntegralImageNormalEstimation<PointXYZRGB, Normal> ne;
@@ -65,20 +66,17 @@ PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::ConstPtr cloud, 
   ne.compute(*normals);
 
   return normals;
-}*/
+}
 
-void pointcloudCallback(const sensor_msgs::PointCloud2ConstPtr& cloud) {
-  PCLPointCloud2Ptr cloudPtr(new PCLPointCloud2);
-  pcl_conversions::toPCL(*cloud, *(cloudPtr.get()));
-  PCLPointCloud2 downsampled = downSample(cloudPtr, 0.05, 0.05, 0.05);
+void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr& cloud) {
+  PointCloud<PointXYZRGB>::Ptr cloud_conv (new PointCloud<PointXYZRGB> (*cloud));
+  
+  //PointCloud<PointXYZRGB>::Ptr downsampled_ptr (new PointCloud<PointXYZRGB>);
+  //*downsampled_ptr = downSample(cloud_conv, 0.05, 0.05, 0.05);
+  
+  PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_conv, 0.02, 10.0);
 
-  pcl::PointCloud<pcl::PointXYZRGB> downsampled_b;
-  pcl::fromPCLPointCloud2(downsampled, downsampled_b);
-  pcl::PointCloud<pcl::PointXYZRGB>::Ptr downsampled_b_ptr (new pcl::PointCloud<pcl::PointXYZRGB> (downsampled_b));
-
-  PointCloud<Normal>::Ptr cloud_normals = computeNormals(downsampled_b_ptr, 0.05);
-
-  updateViewer(viewer, downsampled_b_ptr, cloud_normals);
+  updateViewer(viewer, cloud_conv, cloud_normals);
 }
 
 int main(int argc, char **argv) {
@@ -86,7 +84,7 @@ int main(int argc, char **argv) {
   ros::NodeHandle n;
   viewer = createViewer();
   
-  ros::Subscriber sub_cloud = n.subscribe("/camera/depth_registered/points", 1, pointcloudCallback);
+  ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>("/camera/depth_registered/points", 1, pointcloudCallback);
 
   ros::spin();
   return 0;
