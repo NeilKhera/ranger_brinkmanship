@@ -1,0 +1,4 @@
+<launch>
+  <include file="$(find realsense2_camera)/launch/rs_rgbd.launch"/>
+  <node pkg="pointcloud_analysis" type="pointcloud_analysis" name="pointcloud_analysis"/>
+</launch>
