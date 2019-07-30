@@ -13,6 +13,8 @@
 
 using namespace pcl;
 
+ros::Publisher pub;
+
 visualization::PCLVisualizer::Ptr viewer;
 
 visualization::PCLVisualizer::Ptr createViewer() {
@@ -90,6 +92,46 @@ PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, doubl
   return normals;
 }*/
 
+PointCloud<PointXYZI> normal_analysis(PointCloud<Normal> normals, PointCloud<PointXYZRGB> cloud) {
+  PointCloud<PointXYZI> output_cloud;
+  output_cloud.height = cloud.height;
+  output_cloud.width = cloud.width;
+  output_cloud.header.frame_id = cloud.header.frame_id;
+	
+  float vector_x = 0.0;
+  float vector_y = 0.0;
+  float vector_z = -1.0;
+
+  float threshold = 0.5;
+
+  for (int i = 0; i < normals.points.size(); i++) {
+    Normal n = normals.points[i];
+    PointXYZRGB point = cloud.points[i];
+
+    float norm_x = n.normal_x;
+    float norm_y = n.normal_y;
+    float norm_z = n.normal_z;
+
+    float dot = vector_x * norm_x + vector_y * norm_y + vector_z * norm_z;
+    float theta = std::acos(dot);
+
+    PointXYZI p;
+    p.x = point.x;
+    p.y = point.y;
+    p.z = point.z;
+
+    if (theta > threshold) {
+      p.intensity = 1;
+    } else {
+      p.intensity = 0;
+    }
+
+    output_cloud.points.push_back(p);
+  }
+
+  return output_cloud;
+}
+
 void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr& cloud) {
   PointCloud<PointXYZRGB>::Ptr cloud_conv (new PointCloud<PointXYZRGB> (*cloud));
   ROS_ERROR("SIZE1: %lu", cloud_conv->points.size());
@@ -114,7 +156,11 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr& cloud) {
 
   ROS_ERROR("NORMAL SIZE: %lu", cloud_normals->points.size());
 
-  updateViewer(viewer, cloud_conv, cloud_normals);
+  PointCloud<PointXYZI> output = normal_analysis(*cloud_normals, *cloud_conv);
+
+  pub.publish(output);
+
+  //updateViewer(viewer, cloud_conv, cloud_normals);
 }
 
 int main(int argc, char **argv) {
@@ -124,6 +170,8 @@ int main(int argc, char **argv) {
   
   ros::Subscriber sub_cloud =
 	  n.subscribe<PointCloud<PointXYZRGB>>("/camera/depth_registered/points", 1, pointcloudCallback);
+
+  pub = n.advertise<PointCloud<PointXYZI>>("/normal_processed/points", 1);
 
   ros::spin();
   return 0;
