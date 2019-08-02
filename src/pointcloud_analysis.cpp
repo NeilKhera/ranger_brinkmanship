@@ -176,7 +176,9 @@ PointCloud<PointXYZI> normalAnalysis(PointCloud<Normal> normals,
     p.y = point.y;
     p.z = point.z;
 
-    if (theta > threshold) {
+    if (point.y > 0.15 or point.y < -0.2) {
+      p.intensity = 1;
+    } else if (theta > threshold) {
       p.intensity = 2;
     } else {
       p.intensity = 0;
@@ -190,11 +192,11 @@ PointCloud<PointXYZI> normalAnalysis(PointCloud<Normal> normals,
 
 void goOrNoGo(PointCloud<PointXYZI> cloud) {
   std_msgs::Bool go;
-  if (cloud.points.size() > 500) {
+  /*if (cloud.points.size() > 500) {
     go.data = true;
   } else {
     go.data = false;
-  }
+  }*/
 
   int count = 0;
   for (int i = 0; i < cloud.points.size(); i++) {
@@ -228,7 +230,7 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   PointCloud<PointXYZRGB>::Ptr cloud_transformed_camera =
       transformCameraToRobot(cloud_transformed_gravity);
 
-  cutOff(cloud_transformed_camera);
+  //cutOff(cloud_transformed_camera);
   
   PointCloud<Normal>::Ptr cloud_normals =
       computeNormals(cloud_transformed_camera, 0.05);
