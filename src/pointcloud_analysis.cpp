@@ -1,6 +1,7 @@
 #include "tic_toc.h"
 
 #include <math.h>
+#include <std_msgs/Bool.h>
 #include <geometry_msgs/Vector3Stamped.h>
 #include <pcl/common/transforms.h>
 #include <pcl/features/normal_3d.h>
@@ -16,12 +17,13 @@
 using namespace pcl;
 
 static const double CAMERA_ANGLE = M_PI / 4;
-static const double CAMERA_HEIGHT = 0.10;
+static const double CAMERA_HEIGHT = 0.50;
 
 float roll = 0.0;
 float pitch = 0.0;
 
 ros::Publisher pub_cloud;
+ros::Publisher pub_go;
 visualization::PCLVisualizer::Ptr viewer;
 
 visualization::PCLVisualizer::Ptr createViewer() {
@@ -48,16 +50,16 @@ void cutOff(PointCloud<PointXYZRGB>::Ptr cloud) {
   PassThrough<PointXYZRGB> pt;
   pt.setInputCloud(cloud);
 
-  pt.setFilterFieldName("x");
-  pt.setFilterLimits(-100, 100);
-  pt.filter(*cloud);
+  //pt.setFilterFieldName("x");
+  //pt.setFilterLimits(-100, 100);
+  //pt.filter(*cloud);
 
   pt.setFilterFieldName("y");
-  pt.setFilterLimits(-100, 100);
+  pt.setFilterLimits(-0.2, 0.15);
   pt.filter(*cloud);
 
   pt.setFilterFieldName("z");
-  pt.setFilterLimits(-100, 100);
+  pt.setFilterLimits(0, 1.5);
   pt.filter(*cloud);
 }
 
@@ -118,6 +120,7 @@ rotateToAlignWithGravity(PointCloud<PointXYZRGB>::ConstPtr cloud) {
 
 PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud,
                                        double radius) {
+  ROS_ERROR("%d", cloud->points.size());
   PointCloud<Normal>::Ptr normals(new PointCloud<Normal>);
   search::KdTree<PointXYZRGB>::Ptr kdtree(new search::KdTree<PointXYZRGB>());
 
@@ -167,7 +170,6 @@ PointCloud<PointXYZI> normalAnalysis(PointCloud<Normal> normals,
 
     float dot = vector_x * norm_x + vector_y * norm_y + vector_z * norm_z;
     float theta = std::acos(dot);
-    ROS_ERROR("%f", theta);
 
     PointXYZI p;
     p.x = point.x;
@@ -175,7 +177,7 @@ PointCloud<PointXYZI> normalAnalysis(PointCloud<Normal> normals,
     p.z = point.z;
 
     if (theta > threshold) {
-      p.intensity = 1;
+      p.intensity = 2;
     } else {
       p.intensity = 0;
     }
@@ -184,6 +186,29 @@ PointCloud<PointXYZI> normalAnalysis(PointCloud<Normal> normals,
   }
 
   return output_cloud;
+}
+
+void goOrNoGo(PointCloud<PointXYZI> cloud) {
+  std_msgs::Bool go;
+  if (cloud.points.size() > 500) {
+    go.data = true;
+  } else {
+    go.data = false;
+  }
+
+  int count = 0;
+  for (int i = 0; i < cloud.points.size(); i++) {
+    PointXYZI point = cloud.points[i];
+    if (point.intensity == 0) {
+      count++;
+    }
+  }
+
+  ROS_ERROR("count %d", count);
+  if (count < (0.85 * cloud.points.size())) {
+    go.data = false;
+  }
+  pub_go.publish(go);
 }
 
 void orientationCallback(const geometry_msgs::Vector3Stamped::ConstPtr &vector_msg) {
@@ -195,7 +220,6 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   PointCloud<PointXYZRGB>::Ptr cloud_converted(
       new PointCloud<PointXYZRGB>(*cloud));
 
-  cutOff(cloud_converted);
   downSample(cloud_converted, 0.05, 0.05, 0.05);
   // statOutRemoval(cloud_converted);
 
@@ -204,26 +228,30 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   PointCloud<PointXYZRGB>::Ptr cloud_transformed_camera =
       transformCameraToRobot(cloud_transformed_gravity);
 
+  cutOff(cloud_transformed_camera);
+  
   PointCloud<Normal>::Ptr cloud_normals =
       computeNormals(cloud_transformed_camera, 0.05);
   PointCloud<PointXYZI> output =
       normalAnalysis(*cloud_normals, *cloud_transformed_camera);
 
+  goOrNoGo(output);
+
   pub_cloud.publish(output);
-  updateViewer(viewer, cloud_transformed_camera, cloud_normals);
+  //updateViewer(viewer, cloud_transformed_camera, cloud_normals);
 }
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "pointcloud_analysis");
   ros::NodeHandle n;
-  viewer = createViewer();
+  //viewer = createViewer();
 
   ros::Subscriber sub_orientation = n.subscribe("/imu/rpy", 1, orientationCallback);
-
   ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>(
       "/camera/depth_registered/points", 1, pointcloudCallback);
 
-  pub_cloud = n.advertise<PointCloud<PointXYZI>>("/normal_processed/points", 1);
+  pub_cloud = n.advertise<PointCloud<PointXYZI>>("/pointcloud/analysis/points", 1);
+  pub_go = n.advertise<std_msgs::Bool>("/pointcloud/analysis/go", 1);
 
   ros::spin();
   return 0;
