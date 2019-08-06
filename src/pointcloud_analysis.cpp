@@ -178,7 +178,7 @@ PointCloud<PointXYZI> normalAnalysis(PointCloud<Normal> normals,
 
     if (point.y > 0.15 or point.y < -0.2) {
       p.intensity = 1;
-    } else if (theta > threshold) {
+    } else if (theta > threshold && theta < M_PI - threshold) {
       p.intensity = 2;
     } else {
       p.intensity = 0;
@@ -197,6 +197,7 @@ void goOrNoGo(PointCloud<PointXYZI> cloud) {
   } else {
     go.data = false;
   }*/
+  go.data = true;
 
   int count = 0;
   for (int i = 0; i < cloud.points.size(); i++) {
@@ -240,13 +241,13 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   goOrNoGo(output);
 
   pub_cloud.publish(output);
-  //updateViewer(viewer, cloud_transformed_camera, cloud_normals);
+  updateViewer(viewer, cloud_transformed_camera, cloud_normals);
 }
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "pointcloud_analysis");
   ros::NodeHandle n;
-  //viewer = createViewer();
+  viewer = createViewer();
 
   ros::Subscriber sub_orientation = n.subscribe("/imu/rpy", 1, orientationCallback);
   ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>(
