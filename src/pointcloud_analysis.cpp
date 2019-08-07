@@ -16,15 +16,12 @@
 
 using namespace pcl;
 
-static const double ROVER_WIDTH = 0.5;
-
-static const double CAMERA_ANGLE = M_PI / 4;
-static const double CAMERA_HEIGHT = 0.12;
-
-static const double ANGLE_THRESHOLD = 0.3;
-
-static const double Y_MAX = 0.15;
-static const double Y_MIN = -0.20;
+float ROVER_WIDTH;
+float CAMERA_ANGLE;
+float CAMERA_HEIGHT;
+float ANGLE_THRESHOLD;
+float Y_MAX;
+float Y_MIN;
 
 float roll = 0.0;
 float pitch = 0.0;
@@ -87,7 +84,7 @@ float findEdge(PointCloud<PointXYZRGB> cloud) {
 
   for (int i = 0; i < cloud.width; i += 10) {
     for (int j = 0; j < cloud.height; j += 10) {
-      if (!isnan(cloud.at(i, j).z) && cloud.at(i, j).y > -0.2 && cloud.at(i, j).y < 0.15) {
+      if (!isnan(cloud.at(i, j).z) && cloud.at(i, j).y > Y_MIN && cloud.at(i, j).y < Y_MAX) {
         if (cloud.at(i, j).z < z_min || z_min < 0) {
           z_min = cloud.at(i, j).z;
         }
@@ -207,6 +204,14 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
 int main(int argc, char **argv) {
   ros::init(argc, argv, "pointcloud_analysis");
   ros::NodeHandle n;
+
+  n.getParam("/pointcloud_analysis/ROVER_WIDTH", ROVER_WIDTH);
+  n.getParam("/pointcloud_analysis/CAMERA_ANGLE", CAMERA_ANGLE);
+  n.getParam("/pointcloud_analysis/CAMERA_HEIGHT", CAMERA_HEIGHT);
+  n.getParam("/pointcloud_analysis/ANGLE_THRESHOLD", ANGLE_THRESHOLD);
+  n.getParam("/pointcloud_analysis/Y_MAX", Y_MAX);
+  n.getParam("/pointcloud_analysis/Y_MIN", Y_MIN);
+
   viewer = createViewer();
 
   ros::Subscriber sub_orientation = n.subscribe("/imu/rpy", 1, orientationCallback);
