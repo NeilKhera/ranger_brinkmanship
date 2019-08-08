@@ -20,6 +20,7 @@ float ROVER_WIDTH;
 float CAMERA_ANGLE;
 float CAMERA_HEIGHT;
 float ANGLE_THRESHOLD;
+float EDGE_THRESHOLD;
 float Y_MAX;
 float Y_MIN;
 
@@ -180,7 +181,7 @@ void goOrNoGo(PointCloud<PointXYZI> cloud, float distance) {
     go.data = false;
   }*/
 
-  if (distance < 0.25) {
+  if (distance < EDGE_THRESHOLD) {
     go.data = false;
   }
   pub_go.publish(go);
@@ -226,6 +227,7 @@ int main(int argc, char **argv) {
   n.getParam("/pointcloud_analysis/CAMERA_ANGLE", CAMERA_ANGLE);
   n.getParam("/pointcloud_analysis/CAMERA_HEIGHT", CAMERA_HEIGHT);
   n.getParam("/pointcloud_analysis/ANGLE_THRESHOLD", ANGLE_THRESHOLD);
+  n.getParam("/pointcloud_analysis/EDGE_THRESHOLD", EDGE_THRESHOLD);
   n.getParam("/pointcloud_analysis/Y_MAX", Y_MAX);
   n.getParam("/pointcloud_analysis/Y_MIN", Y_MIN);
 

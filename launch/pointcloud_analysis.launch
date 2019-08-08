@@ -10,6 +10,7 @@
     <param name = "CAMERA_ANGLE" value = "0.785"/>
     <param name = "CAMERA_HEIGHT" value = "0.12"/>
     <param name = "ANGLE_THRESHOLD" value = "0.3"/>
+    <param name = "EDGE_THRESHOLD" value = "0.25"/>
     <param name = "Y_MAX" value = "0.15"/>
     <param name = "Y_MIN" value = "-0.20"/>
   </node>
