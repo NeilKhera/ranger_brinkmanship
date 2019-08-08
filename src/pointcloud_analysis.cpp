@@ -66,12 +66,22 @@ void downSample(PointCloud<PointXYZRGB>::Ptr cloud, double x_dim, double y_dim, 
   vox.filter(*cloud);
 }
 
-PointCloud<PointXYZRGB>::Ptr frameTransform(PointCloud<PointXYZRGB>::ConstPtr cloud) {
+PointCloud<PointXYZRGB>::Ptr frameTransform(PointCloud<PointXYZRGB>::Ptr cloud) {
   Eigen::Affine3f transform_matrix = Eigen::Affine3f::Identity();
-
   transform_matrix.translation() << 0.0, -CAMERA_HEIGHT, 0.0;
-  transform_matrix.rotate(Eigen::AngleAxisf(pitch-CAMERA_ANGLE, Eigen::Vector3f::UnitX()));
+  transform_matrix.rotate(Eigen::AngleAxisf(-CAMERA_ANGLE, Eigen::Vector3f::UnitX()));
   transform_matrix.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitZ()));
+
+  PointCloud<PointXYZRGB>::Ptr cloud_corrected (new PointCloud<PointXYZRGB>());
+  transformPointCloud(*cloud, *cloud_corrected, transform_matrix);
+
+  return cloud_corrected;
+}
+
+PointCloud<PointXYZRGB>::Ptr orientationCorrection(PointCloud<PointXYZRGB>::Ptr cloud) {
+  Eigen::Affine3f transform_matrix = Eigen::Affine3f::Identity();
+  transform_matrix.rotate(Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitX()));
+  //transform_matrix.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitZ()));
 
   PointCloud<PointXYZRGB>::Ptr cloud_corrected (new PointCloud<PointXYZRGB>());
   transformPointCloud(*cloud, *cloud_corrected, transform_matrix);
@@ -194,15 +204,18 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   downSample(cloud_transformed, 0.05, 0.05, 0.05);
   //cutOff(cloud_transformed);
   
+  PointCloud<PointXYZRGB>::Ptr cloud_orientation_corrected = 
+	  orientationCorrection(cloud_transformed);
+
   PointCloud<Normal>::Ptr cloud_normals =
-      computeNormals(cloud_transformed, 0.05);
+      computeNormals(cloud_orientation_corrected, 0.05);
   PointCloud<PointXYZI> output =
-      normalAnalysis(*cloud_normals, *cloud_transformed);
+      normalAnalysis(*cloud_normals, *cloud_orientation_corrected);
 
   goOrNoGo(output, d);
 
   pub_cloud.publish(output);
-  updateViewer(viewer, cloud_transformed, cloud_normals);
+  //updateViewer(viewer, cloud_orientation_corrected, cloud_normals);
 }
 
 int main(int argc, char **argv) {
@@ -216,7 +229,7 @@ int main(int argc, char **argv) {
   n.getParam("/pointcloud_analysis/Y_MAX", Y_MAX);
   n.getParam("/pointcloud_analysis/Y_MIN", Y_MIN);
 
-  viewer = createViewer();
+  //viewer = createViewer();
 
   ros::Subscriber sub_orientation = n.subscribe("/imu/rpy", 1, orientationCallback);
   ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>("/camera/depth_registered/points", 1, pointcloudCallback);
