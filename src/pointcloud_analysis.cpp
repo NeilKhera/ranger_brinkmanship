@@ -154,11 +154,11 @@ PointCloud<PointXYZI> normalAnalysis(PointCloud<Normal> normals, PointCloud<Poin
   return output_cloud;
 }
 
-void goOrNoGo(PointCloud<PointXYZI> cloud) {
+void goOrNoGo(PointCloud<PointXYZI> cloud, float distance) {
   std_msgs::Bool go;
   go.data = true;
 
-  int count = 0;
+  /*int count = 0;
   for (int i = 0; i < cloud.points.size(); i++) {
     PointXYZI point = cloud.points[i];
     if (point.intensity == 0) {
@@ -167,6 +167,10 @@ void goOrNoGo(PointCloud<PointXYZI> cloud) {
   }
 
   if (count < (0.85 * cloud.points.size())) {
+    go.data = false;
+  }*/
+
+  if (distance < 0.25) {
     go.data = false;
   }
   pub_go.publish(go);
@@ -195,7 +199,7 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   PointCloud<PointXYZI> output =
       normalAnalysis(*cloud_normals, *cloud_transformed);
 
-  goOrNoGo(output);
+  goOrNoGo(output, d);
 
   pub_cloud.publish(output);
   updateViewer(viewer, cloud_transformed, cloud_normals);
