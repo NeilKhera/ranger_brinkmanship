@@ -107,6 +107,18 @@ float findEdge(PointCloud<PointXYZRGB> cloud) {
   return z_min;
 }
 
+/*void markObstacles(PointCloud<PointXYZRGB>::Ptr cloud) {
+  KdTreeFLANN<PointXYZRGB> kdtree;
+  kdtree.setInputCloud(cloud);
+
+  std::vector<int> pointIndices;
+  std::vector<float> pointDistancesSq;
+
+  float radius = 0.5;
+  if (kdtree.radiusSearch(searchPoint, radius, pointIndices, pointDistancesSq) > 0) {
+
+  }
+}*/
 
 PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, double radius) {
   PointCloud<Normal>::Ptr normals(new PointCloud<Normal>);
@@ -195,8 +207,10 @@ void orientationCallback(const geometry_msgs::Vector3Stamped::ConstPtr &vector_m
 void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   PointCloud<PointXYZRGB>::Ptr cloud_converted(
       new PointCloud<PointXYZRGB>(*cloud));
-
+  
+  tic();
   PointCloud<PointXYZRGB>::Ptr cloud_transformed = frameTransform(cloud_converted);
+  ROS_ERROR("Transform: %f", toc());
 
   tic();
   float d = findEdge(*cloud_transformed);
