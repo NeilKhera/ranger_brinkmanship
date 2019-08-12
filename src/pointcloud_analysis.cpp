@@ -12,6 +12,7 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/point_cloud.h>
+#include <pcl/kdtree/kdtree_flann.h>
 #include <ros/ros.h>
 
 using namespace pcl;
@@ -28,6 +29,7 @@ float roll = 0.0;
 float pitch = 0.0;
 
 ros::Publisher pub_cloud;
+ros::Publisher pub_cloud_obstacles;
 ros::Publisher pub_go;
 visualization::PCLVisualizer::Ptr viewer;
 
@@ -107,18 +109,55 @@ float findEdge(PointCloud<PointXYZRGB> cloud) {
   return z_min;
 }
 
-/*void markObstacles(PointCloud<PointXYZRGB>::Ptr cloud) {
-  KdTreeFLANN<PointXYZRGB> kdtree;
-  kdtree.setInputCloud(cloud);
+void marking(KdTreeFLANN<PointXYZI> kdtree, PointXYZI searchPoint, PointCloud<PointXYZI>::Ptr cloud, PointCloud<PointXYZI>::Ptr new_cloud) {
+  PointXYZI new_point;
+  new_point.x = searchPoint.x;
+  new_point.y = searchPoint.y;
+  new_point.z = searchPoint.z;
+  new_point.intensity = searchPoint.intensity;
 
+  (*new_cloud).push_back(new_point);
+	
   std::vector<int> pointIndices;
   std::vector<float> pointDistancesSq;
 
-  float radius = 0.5;
-  if (kdtree.radiusSearch(searchPoint, radius, pointIndices, pointDistancesSq) > 0) {
-
+  float radius = 0.05;
+  
+  kdtree.radiusSearch(searchPoint, radius, pointIndices, pointDistancesSq);
+  for (int i = 0; i < pointIndices.size(); i++) {
+    PointXYZI point = cloud->points[pointIndices[i]];
+    if (point.intensity == 2) {
+      cloud->points[pointIndices[i]].intensity = 6;
+      marking(kdtree, point, cloud, new_cloud);
+    }
   }
-}*/
+}
+
+PointCloud<PointXYZI>::Ptr markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
+  KdTreeFLANN<PointXYZI> kdtree;
+  kdtree.setInputCloud(cloud);
+
+  PointCloud<PointXYZI>::Ptr new_cloud(new PointCloud<PointXYZI>());
+  new_cloud->header.frame_id = cloud->header.frame_id;
+
+  for (int i = 0; i < cloud->points.size(); i++) {
+    PointXYZI point = cloud->points[i];
+    if (point.intensity == 2) {
+      PointCloud<PointXYZI>::Ptr temp_cloud(new PointCloud<PointXYZI>());
+      temp_cloud->header.frame_id = cloud->header.frame_id;
+
+      cloud->points[i].intensity = 6;
+      marking(kdtree, point, cloud, temp_cloud);
+
+      if (temp_cloud->points.size() >= 5) {
+        for (int j = 0; j < temp_cloud->points.size(); j++) {
+          (*new_cloud).push_back(temp_cloud->points[j]);
+	}
+      }
+    }
+  }
+  return new_cloud;
+}
 
 PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, double radius) {
   PointCloud<Normal>::Ptr normals(new PointCloud<Normal>);
@@ -208,13 +247,9 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   PointCloud<PointXYZRGB>::Ptr cloud_converted(
       new PointCloud<PointXYZRGB>(*cloud));
   
-  tic();
   PointCloud<PointXYZRGB>::Ptr cloud_transformed = frameTransform(cloud_converted);
-  ROS_ERROR("Transform: %f", toc());
 
-  tic();
   float d = findEdge(*cloud_transformed);
-  ROS_ERROR("Edges: %f, %f", toc(), d);
 
   downSample(cloud_transformed, 0.05, 0.05, 0.05);
   //cutOff(cloud_transformed);
@@ -226,6 +261,10 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
       computeNormals(cloud_orientation_corrected, 0.05);
   PointCloud<PointXYZI> output =
       normalAnalysis(*cloud_normals, *cloud_orientation_corrected);
+
+  PointCloud<PointXYZI>::Ptr output_ptr(new PointCloud<PointXYZI> (output));
+  PointCloud<PointXYZI>::Ptr obstacle_cloud = markObstacles(output_ptr);
+  pub_cloud_obstacles.publish(*obstacle_cloud);
 
   goOrNoGo(output, d);
 
@@ -251,6 +290,7 @@ int main(int argc, char **argv) {
   ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>("/camera/depth_registered/points", 1, pointcloudCallback);
 
   pub_cloud = n.advertise<PointCloud<PointXYZI>>("/pointcloud/analysis/points", 1);
+  pub_cloud_obstacles = n.advertise<PointCloud<PointXYZI>>("/pointcloud/analysis/obstacles", 1);
   pub_go = n.advertise<std_msgs::Bool>("/pointcloud/analysis/go", 1);
   
   ros::spin();
