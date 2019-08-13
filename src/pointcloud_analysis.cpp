@@ -140,6 +140,7 @@ PointCloud<PointXYZI>::Ptr markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
   PointCloud<PointXYZI>::Ptr new_cloud(new PointCloud<PointXYZI>());
   new_cloud->header.frame_id = cloud->header.frame_id;
 
+  int obstacle_count = 0;
   for (int i = 0; i < cloud->points.size(); i++) {
     PointXYZI point = cloud->points[i];
     if (point.intensity == 2) {
@@ -151,8 +152,10 @@ PointCloud<PointXYZI>::Ptr markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
 
       if (temp_cloud->points.size() >= 5) {
         for (int j = 0; j < temp_cloud->points.size(); j++) {
+	  temp_cloud->points[j].intensity = obstacle_count;
           (*new_cloud).push_back(temp_cloud->points[j]);
 	}
+	obstacle_count++;
       }
     }
   }
