@@ -8,6 +8,7 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/extract_indices.h>
 #include <pcl/point_types.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -109,7 +110,7 @@ float findEdge(PointCloud<PointXYZRGB> cloud) {
   return z_min;
 }
 
-void marking(KdTreeFLANN<PointXYZI> kdtree, PointXYZI searchPoint, PointCloud<PointXYZI>::Ptr cloud, PointCloud<PointXYZI>::Ptr new_cloud) {
+void marking(KdTreeFLANN<PointXYZI> kdtree, PointXYZI searchPoint, PointCloud<PointXYZI>::Ptr cloud, PointCloud<PointXYZI>::Ptr new_cloud, PointIndices::Ptr removals) {
   PointXYZI new_point;
   new_point.x = searchPoint.x;
   new_point.y = searchPoint.y;
@@ -127,8 +128,9 @@ void marking(KdTreeFLANN<PointXYZI> kdtree, PointXYZI searchPoint, PointCloud<Po
   for (int i = 0; i < pointIndices.size(); i++) {
     PointXYZI point = cloud->points[pointIndices[i]];
     if (point.intensity == 2) {
-      cloud->points[pointIndices[i]].intensity = 6;
-      marking(kdtree, point, cloud, new_cloud);
+      cloud->points[pointIndices[i]].intensity = 0;
+      removals->indices.push_back(pointIndices[i]);
+      marking(kdtree, point, cloud, new_cloud, removals);
     }
   }
 }
@@ -140,15 +142,26 @@ PointCloud<PointXYZI>::Ptr markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
   PointCloud<PointXYZI>::Ptr new_cloud(new PointCloud<PointXYZI>());
   new_cloud->header.frame_id = cloud->header.frame_id;
 
-  int obstacle_count = 0;
+  PointIndices::Ptr removals(new PointIndices());
+  
+  int obstacle_count = 1;
   for (int i = 0; i < cloud->points.size(); i++) {
     PointXYZI point = cloud->points[i];
     if (point.intensity == 2) {
       PointCloud<PointXYZI>::Ptr temp_cloud(new PointCloud<PointXYZI>());
       temp_cloud->header.frame_id = cloud->header.frame_id;
 
-      cloud->points[i].intensity = 6;
-      marking(kdtree, point, cloud, temp_cloud);
+      //PointIndices::Ptr removals(new PointIndices());
+      
+      cloud->points[i].intensity = 0;
+      removals->indices.push_back(i);
+      marking(kdtree, point, cloud, temp_cloud, removals);
+
+      //ExtractIndices<PointXYZI> extract;
+      //extract.setInputCloud(cloud);
+      //extract.setIndices(removals);
+      //extract.setNegative(true);
+      //extract.filter(*cloud);
 
       if (temp_cloud->points.size() >= 5) {
         for (int j = 0; j < temp_cloud->points.size(); j++) {
@@ -159,6 +172,18 @@ PointCloud<PointXYZI>::Ptr markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
       }
     }
   }
+
+  ExtractIndices<PointXYZI> extract;
+  extract.setInputCloud(cloud);
+  extract.setIndices(removals);
+  extract.setNegative(true);
+  extract.filter(*cloud);
+
+  for (int i = 0; i < new_cloud->points.size(); i++) {
+    (*cloud).push_back(new_cloud->points[i]);
+  }
+
+
   return new_cloud;
 }
 
@@ -205,9 +230,9 @@ PointCloud<PointXYZI> normalAnalysis(PointCloud<Normal> normals, PointCloud<Poin
     p.y = point.y;
     p.z = point.z;
 
-    if (point.y > 0.15 or point.y < -0.2) {
+    /*if (point.y > 0.15 or point.y < -0.2) {
       p.intensity = 1;
-    } else if (theta > ANGLE_THRESHOLD && theta < M_PI - ANGLE_THRESHOLD) {
+    } else*/ if (theta > ANGLE_THRESHOLD && theta < M_PI - ANGLE_THRESHOLD) {
       p.intensity = 2;
     } else {
       p.intensity = 0;
@@ -269,9 +294,9 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   PointCloud<PointXYZI>::Ptr obstacle_cloud = markObstacles(output_ptr);
   pub_cloud_obstacles.publish(*obstacle_cloud);
 
-  goOrNoGo(output, d);
+  goOrNoGo(*output_ptr, d);
 
-  pub_cloud.publish(output);
+  pub_cloud.publish(*output_ptr);
   //updateViewer(viewer, cloud_orientation_corrected, cloud_normals);
 }
 
