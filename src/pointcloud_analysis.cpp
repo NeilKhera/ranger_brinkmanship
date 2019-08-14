@@ -314,7 +314,7 @@ int main(int argc, char **argv) {
 
   //viewer = createViewer();
 
-  ros::Subscriber sub_orientation = n.subscribe("/imu/rpy", 1, orientationCallback);
+  ros::Subscriber sub_orientation = n.subscribe("/ak2/imu/rpy", 1, orientationCallback);
   ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>("/camera/depth_registered/points", 1, pointcloudCallback);
 
   pub_cloud = n.advertise<PointCloud<PointXYZI>>("/pointcloud/analysis/points", 1);
