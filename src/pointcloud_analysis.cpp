@@ -8,10 +8,10 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/extract_indices.h>
-#include <pcl/point_types.h>
-#include <pcl_conversions/pcl_conversions.h>
-#include <pcl_ros/point_cloud.h>
 #include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/point_types.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl_conversions/pcl_conversions.h>
 #include <ros/ros.h>
 
 using namespace pcl;
@@ -19,7 +19,8 @@ using namespace pcl;
 float ROVER_WIDTH;
 float CAMERA_ANGLE;
 float CAMERA_HEIGHT;
-float ANGLE_THRESHOLD;
+float ASCENDING_ANGLE_THRESHOLD;
+float DESCENDING_ANGLE_THRESHOLD;
 float EDGE_THRESHOLD;
 float Y_MAX;
 float Y_MIN;
@@ -30,13 +31,47 @@ float pitch = 0.0;
 ros::Publisher pub_cloud;
 ros::Publisher pub_go;
 
-void cutOff(PointCloud<PointXYZRGB>::Ptr cloud) {
-  PassThrough<PointXYZRGB> pt;
-  pt.setInputCloud(cloud);
+PointCloud<PointXYZRGB>::Ptr frameTransform(PointCloud<PointXYZRGB>::Ptr cloud) {
+  Eigen::Affine3f transform_matrix = Eigen::Affine3f::Identity();
+  transform_matrix.translation() << 0.0, -CAMERA_HEIGHT, 0.0;
+  transform_matrix.rotate(Eigen::AngleAxisf(pitch-CAMERA_ANGLE, Eigen::Vector3f::UnitX()));
+  transform_matrix.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitZ()));
 
-  pt.setFilterFieldName("x");
-  pt.setFilterLimits(-ROVER_WIDTH / 2, ROVER_WIDTH / 2);
-  pt.filter(*cloud);
+  PointCloud<PointXYZRGB>::Ptr cloud_corrected (new PointCloud<PointXYZRGB>());
+  transformPointCloud(*cloud, *cloud_corrected, transform_matrix);
+
+  return cloud_corrected;
+}
+
+float getPlaneFalloff(PointCloud<PointXYZRGB> cloud) {
+  float z_min = -1.0;
+  int spacing = 10;
+
+  for (int i = 0; i < cloud.width; i += spacing) {
+    float prev_y = 0.0;
+    float prev_z = 0.0;
+
+    bool edgeDetected = false;
+    for (int j = cloud.height - 1; j >= 0; j -= spacing) {
+      PointXYZRGB point = cloud.at(i, j);
+
+      if (!isnan(point.z)) {
+        if (std::abs(point.y - prev_y) > -Y_MIN) {
+	  if (prev_z < z_min || z_min < 0) {
+            z_min = prev_z;
+          }
+	  break;
+        }
+        prev_y = point.y;
+	prev_z = point.z;
+      }
+
+      if (j == (cloud.height - 1) % spacing && (prev_z < z_min || z_min < 0)) {
+	z_min = prev_z;
+      }
+    }
+  }
+  return z_min;
 }
 
 void downSample(PointCloud<PointXYZRGB>::Ptr cloud, double x_dim, double y_dim, double z_dim) {
@@ -46,42 +81,15 @@ void downSample(PointCloud<PointXYZRGB>::Ptr cloud, double x_dim, double y_dim, 
   vox.filter(*cloud);
 }
 
-PointCloud<PointXYZRGB>::Ptr frameTransform(PointCloud<PointXYZRGB>::Ptr cloud) {
-  Eigen::Affine3f transform_matrix = Eigen::Affine3f::Identity();
-  transform_matrix.translation() << 0.0, -CAMERA_HEIGHT, 0.0;
-  transform_matrix.rotate(Eigen::AngleAxisf(-CAMERA_ANGLE, Eigen::Vector3f::UnitX()));
-
-  PointCloud<PointXYZRGB>::Ptr cloud_corrected (new PointCloud<PointXYZRGB>());
-  transformPointCloud(*cloud, *cloud_corrected, transform_matrix);
-
-  return cloud_corrected;
-}
-
-PointCloud<PointXYZINormal>::Ptr orientationCorrection(PointCloud<PointXYZINormal>::Ptr cloud) {
-  Eigen::Affine3f transform_matrix = Eigen::Affine3f::Identity();
-  transform_matrix.rotate(Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitX()));
-  transform_matrix.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitZ()));
-
-  PointCloud<PointXYZINormal>::Ptr cloud_corrected (new PointCloud<PointXYZINormal>());
-  transformPointCloudWithNormals(*cloud, *cloud_corrected, transform_matrix);
-
-  return cloud_corrected;
-}
-
-float planeFalloffDistance(PointCloud<PointXYZRGB> cloud) {
-  float z_min = -1.0;
-
-  for (int i = 0; i < cloud.width; i += 10) {
-    for (int j = 0; j < cloud.height; j += 10) {
-      if (!isnan(cloud.at(i, j).z) && cloud.at(i, j).y > Y_MIN && cloud.at(i, j).y < Y_MAX) {
-        if (cloud.at(i, j).z < z_min || z_min < 0) {
-          z_min = cloud.at(i, j).z;
-        }
-        break;
-      }
-    }
-  }
-  return z_min;
+void cutOff(PointCloud<PointXYZRGB>::Ptr cloud, float edgeDistance) {
+  PassThrough<PointXYZRGB> pt;
+  pt.setInputCloud(cloud);
+  pt.setFilterFieldName("z");
+  pt.setFilterLimits(0.0, edgeDistance);
+  pt.filter(*cloud);
+  pt.setFilterFieldName("x");
+  pt.setFilterLimits(-ROVER_WIDTH / 2, ROVER_WIDTH / 2);
+  pt.filter(*cloud);
 }
 
 void marking(KdTreeFLANN<PointXYZI> kdtree, PointXYZI search_point, PointCloud<PointXYZI>::Ptr cloud, PointCloud<PointXYZI>::Ptr temp_cloud, PointIndices::Ptr removals) {
@@ -169,8 +177,10 @@ PointCloud<PointXYZI>::Ptr normalAnalysis(PointCloud<Normal>::Ptr normals, Point
     p.y = point.y;
     p.z = point.z;
 
-    if (theta > ANGLE_THRESHOLD && theta < M_PI - ANGLE_THRESHOLD) {
+    if (normals->points[i].normal_z < 0 && theta > ASCENDING_ANGLE_THRESHOLD && theta < M_PI - ASCENDING_ANGLE_THRESHOLD) {
       p.intensity = 1;
+    } else if (normals->points[i].normal_z >= 0 && theta > DESCENDING_ANGLE_THRESHOLD && theta < M_PI - DESCENDING_ANGLE_THRESHOLD) {
+      p.intensity = 2;
     } else {
       p.intensity = 0;
     }
@@ -178,28 +188,6 @@ PointCloud<PointXYZI>::Ptr normalAnalysis(PointCloud<Normal>::Ptr normals, Point
   }
 
   return output_cloud;
-}
-
-void surface_slope_estimation(PointCloud<PointXYZINormal>::Ptr cloud) {
-  //cutOff
-
-  float master_normal_x = 0.0f;
-  float master_normal_y = 0.0f;
-  float master_normal_z = 0.0f;
-  int count = 0;
-	
-  for (int i = 0; i < cloud->points.size(); i++) {
-    PointXYZINormal point = cloud->points[i];
-    //Ignore nan
-    if (point.intensity == 0) {
-      master_normal_x += point.normal_x;
-      master_normal_y += point.normal_y;
-      master_normal_z += point.normal_z;
-      count++;
-    }
-  }
-
-  ROS_ERROR("%f %f %f", master_normal_x / count, master_normal_y / count, master_normal_z / count);
 }
 
 void goOrNoGo(float distance) {
@@ -221,23 +209,20 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   PointCloud<PointXYZRGB>::Ptr cloud_converted(new PointCloud<PointXYZRGB>(*cloud));
   PointCloud<PointXYZRGB>::Ptr cloud_transformed = frameTransform(cloud_converted);
 
-  float dist = planeFalloffDistance(*cloud_transformed);
+  float dist = getPlaneFalloff(*cloud_transformed);
+  ROS_ERROR("%f", dist);
 
-  downSample(cloud_transformed, 0.05, 0.05, 0.05); 
+  downSample(cloud_transformed, 0.05, 0.05, 0.05);
+  cutOff(cloud_transformed, dist);
+
   PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_transformed, 0.05);
   PointCloud<PointXYZI>::Ptr cloud_analysed = normalAnalysis(cloud_normals, cloud_transformed);
 
-  PointCloud<PointXYZI>::Ptr cloud_colored(new PointCloud<PointXYZI>(*cloud_analysed));
-  PointCloud<PointXYZI>::Ptr cloud_obstacles = markObstacles(cloud_colored);
-  
-  PointCloud<PointXYZINormal>::Ptr cloud_analysed_normals(new PointCloud<PointXYZINormal>());
-  concatenateFields(*cloud_normals, *cloud_analysed, *cloud_analysed_normals);
-  PointCloud<PointXYZINormal>::Ptr cloud_oriented = orientationCorrection(cloud_analysed_normals);
-
-  surface_slope_estimation(cloud_oriented);
+  //PointCloud<PointXYZI>::Ptr cloud_colored(new PointCloud<PointXYZI>(*cloud_analysed));
+  //PointCloud<PointXYZI>::Ptr cloud_obstacles = markObstacles(cloud_colored);
   
   goOrNoGo(dist);
-  pub_cloud.publish(*cloud_oriented);
+  pub_cloud.publish(*cloud_analysed);
 }
 
 int main(int argc, char **argv) {
@@ -247,7 +232,8 @@ int main(int argc, char **argv) {
   n.getParam("/pointcloud_analysis/ROVER_WIDTH", ROVER_WIDTH);
   n.getParam("/pointcloud_analysis/CAMERA_ANGLE", CAMERA_ANGLE);
   n.getParam("/pointcloud_analysis/CAMERA_HEIGHT", CAMERA_HEIGHT);
-  n.getParam("/pointcloud_analysis/ANGLE_THRESHOLD", ANGLE_THRESHOLD);
+  n.getParam("/pointcloud_analysis/ASCENDING_ANGLE_THRESHOLD", ASCENDING_ANGLE_THRESHOLD);
+  n.getParam("/pointcloud_analysis/DESCENDING_ANGLE_THRESHOLD", DESCENDING_ANGLE_THRESHOLD);
   n.getParam("/pointcloud_analysis/EDGE_THRESHOLD", EDGE_THRESHOLD);
   n.getParam("/pointcloud_analysis/Y_MAX", Y_MAX);
   n.getParam("/pointcloud_analysis/Y_MIN", Y_MIN);
