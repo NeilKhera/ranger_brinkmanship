@@ -6,10 +6,10 @@
     <arg name="color_fps" value="15"/>
   </include>
   <node pkg="pointcloud_analysis" type="pointcloud_analysis" name="pointcloud_analysis" launch-prefix="bash -c 'sleep 1.0; $0 $@' ">
-    <param name = "ROVER_OUTER_WIDTH" value = "0.5"/>
-    <param name = "ROVER_INNER_WIDTH" value = " 0.3"/>
-    <param name = "CAMERA_ANGLE" value = "0.785"/>
-    <param name = "CAMERA_HEIGHT" value = "0.9"/>
+    <param name = "ROVER_OUTER_WIDTH" value = "0.65"/>
+    <param name = "ROVER_INNER_WIDTH" value = " 0.225"/>
+    <param name = "CAMERA_ANGLE" value = "0.580"/>
+    <param name = "CAMERA_HEIGHT" value = "0.435"/>
     <param name = "ASCENDING_ANGLE_THRESHOLD" value = "0.25"/>
     <param name = "DESCENDING_ANGLE_THRESHOLD" value = "0.25"/>
     <param name = "EDGE_THRESHOLD" value = "0.20"/>

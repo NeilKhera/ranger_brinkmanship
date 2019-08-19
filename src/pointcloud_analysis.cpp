@@ -145,7 +145,7 @@ float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
 
   PointCloud<PointXYZI>::Ptr pointholder_cloud(new PointCloud<PointXYZI>());
   PointIndices::Ptr removals(new PointIndices());
-  
+ 
   int obstacle_num = 1;
   float z_min = -1.0;
   for (int i = 0; i < cloud->points.size(); i++) {
@@ -153,15 +153,14 @@ float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
     if (point.intensity == 1 || point.intensity == 2) {
       PointCloud<PointXYZI>::Ptr temp_cloud(new PointCloud<PointXYZI>());
 
-      float* y_min;
-      float* y_max;
-      *y_min = point.y;
-      *y_max = point.y;
+      float* y_min = new float(point.y);
+      float* y_max = new float(point.y);
 
       cloud->points[i].intensity = 0;
       removals->indices.push_back(i);
       marking(y_min, y_max, point.intensity, kdtree, point, cloud, temp_cloud, removals);
 
+      ROS_ERROR("%f", *y_max - *y_min);
       if (*y_max - *y_min > Y_MAX) {
 	if (temp_cloud->points.size() / cloud->points.size() > 0.85) {
 	  big_obstacle = true;
@@ -269,9 +268,9 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_oriented, 0.05);
   PointCloud<PointXYZI>::Ptr cloud_analysed = normalAnalysis(cloud_normals, cloud_oriented);
 
-  float obstacleDistance = markObstacles(cloud_analysed);
-  ROS_ERROR("Big Obstacle: %s", big_obstacle ? "true" : "false");
-  ROS_ERROR("Obstacle: %f", obstacleDistance);
+  //float obstacleDistance = markObstacles(cloud_analysed);
+  //ROS_ERROR("Big Obstacle: %s", big_obstacle ? "true" : "false");
+  //ROS_ERROR("Obstacle: %f", obstacleDistance);
 
   goOrNoGo(edgeDistance);
   pub_cloud.publish(*cloud_analysed);
