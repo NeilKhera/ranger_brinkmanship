@@ -16,7 +16,8 @@
 
 using namespace pcl;
 
-float ROVER_WIDTH;
+float ROVER_OUTER_WIDTH;
+float ROVER_INNER_WIDTH;
 float CAMERA_ANGLE;
 float CAMERA_HEIGHT;
 float ASCENDING_ANGLE_THRESHOLD;
@@ -34,41 +35,46 @@ ros::Publisher pub_go;
 PointCloud<PointXYZRGB>::Ptr frameTransform(PointCloud<PointXYZRGB>::Ptr cloud) {
   Eigen::Affine3f transform_matrix = Eigen::Affine3f::Identity();
   transform_matrix.translation() << 0.0, -CAMERA_HEIGHT, 0.0;
-  transform_matrix.rotate(Eigen::AngleAxisf(pitch-CAMERA_ANGLE, Eigen::Vector3f::UnitX()));
+  transform_matrix.rotate(Eigen::AngleAxisf(-CAMERA_ANGLE, Eigen::Vector3f::UnitX()));
+
+  PointCloud<PointXYZRGB>::Ptr cloud_corrected (new PointCloud<PointXYZRGB>());
+  transformPointCloud(*cloud, *cloud_corrected, transform_matrix);
+  return cloud_corrected;
+}
+
+PointCloud<PointXYZRGB>::Ptr orientationCorrection(PointCloud<PointXYZRGB>::Ptr cloud) {
+  Eigen::Affine3f transform_matrix = Eigen::Affine3f::Identity();
+  transform_matrix.rotate(Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitX()));
   transform_matrix.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitZ()));
 
   PointCloud<PointXYZRGB>::Ptr cloud_corrected (new PointCloud<PointXYZRGB>());
   transformPointCloud(*cloud, *cloud_corrected, transform_matrix);
-
   return cloud_corrected;
 }
 
 float getPlaneFalloff(PointCloud<PointXYZRGB> cloud) {
-  float z_min = -1.0;
+  float prev_y[cloud.width] = {};
+  float prev_z[cloud.width] = {};
+
   int spacing = 10;
-
-  for (int i = 0; i < cloud.width; i += spacing) {
-    float prev_y = 0.0;
-    float prev_z = 0.0;
-
-    bool edgeDetected = false;
-    for (int j = cloud.height - 1; j >= 0; j -= spacing) {
-      PointXYZRGB point = cloud.at(i, j);
+  for (int i = cloud.height - 1; i >= 0; i -= spacing) {
+    for (int j = 0; j < cloud.width; j += spacing) {
+      PointXYZRGB point = cloud.at(j, i);
 
       if (!isnan(point.z)) {
-        if (std::abs(point.y - prev_y) > -Y_MIN) {
-	  if (prev_z < z_min || z_min < 0) {
-            z_min = prev_z;
-          }
-	  break;
+        if (std::abs(point.y - prev_y[j]) > -Y_MIN && std::abs(point.x) > ROVER_INNER_WIDTH / 2 && std::abs(point.x) < ROVER_OUTER_WIDTH / 2) {
+	  return prev_z[j];
         }
-        prev_y = point.y;
-	prev_z = point.z;
+        prev_y[j] = point.y;
+	prev_z[j] = point.z;
       }
-
-      if (j == (cloud.height - 1) % spacing && (prev_z < z_min || z_min < 0)) {
-	z_min = prev_z;
-      }
+    }
+  }
+  
+  float z_min = prev_z[0];
+  for (int i = 0; i < cloud.width; i += spacing) {
+    if (prev_z[i] < z_min) {
+      z_min = prev_z[i];
     }
   }
   return z_min;
@@ -88,11 +94,22 @@ void cutOff(PointCloud<PointXYZRGB>::Ptr cloud, float edgeDistance) {
   pt.setFilterLimits(0.0, edgeDistance);
   pt.filter(*cloud);
   pt.setFilterFieldName("x");
-  pt.setFilterLimits(-ROVER_WIDTH / 2, ROVER_WIDTH / 2);
+  pt.setFilterLimits(-ROVER_OUTER_WIDTH / 2, ROVER_OUTER_WIDTH / 2);
   pt.filter(*cloud);
 }
 
-void marking(KdTreeFLANN<PointXYZI> kdtree, PointXYZI search_point, PointCloud<PointXYZI>::Ptr cloud, PointCloud<PointXYZI>::Ptr temp_cloud, PointIndices::Ptr removals) {
+float getObstacleDistance(PointCloud<PointXYZRGB>::Ptr cloud) {
+  float min_z = -1.0;
+  for (int i = 0; i < cloud->points.size(); i++) {
+    PointXYZRGB point = cloud->points[i];
+    if (point.y > Y_MAX && (point.z < min_z || min_z < 0)) {
+      min_z = point.z;
+    }
+  }
+  return min_z;
+}
+
+void marking(int intensity, KdTreeFLANN<PointXYZI> kdtree, PointXYZI search_point, PointCloud<PointXYZI>::Ptr cloud, PointCloud<PointXYZI>::Ptr temp_cloud, PointIndices::Ptr removals) {
   (*temp_cloud).push_back(search_point);
 	
   std::vector<int> pointIndices;
@@ -102,10 +119,10 @@ void marking(KdTreeFLANN<PointXYZI> kdtree, PointXYZI search_point, PointCloud<P
   kdtree.radiusSearch(search_point, radius, pointIndices, pointDistancesSq);
   for (int i = 0; i < pointIndices.size(); i++) {
     PointXYZI point = cloud->points[pointIndices[i]];
-    if (point.intensity == 1) {
+    if (point.intensity == intensity) {
       cloud->points[pointIndices[i]].intensity = 0;
       removals->indices.push_back(pointIndices[i]);
-      marking(kdtree, point, cloud, temp_cloud, removals);
+      marking(intensity, kdtree, point, cloud, temp_cloud, removals);
     }
   }
 }
@@ -120,12 +137,12 @@ PointCloud<PointXYZI>::Ptr markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
   int obstacle_num = 1;
   for (int i = 0; i < cloud->points.size(); i++) {
     PointXYZI point = cloud->points[i];
-    if (point.intensity == 1) {
+    if (point.intensity == 1 || point.intensity == 2) {
       PointCloud<PointXYZI>::Ptr temp_cloud(new PointCloud<PointXYZI>());
 
       cloud->points[i].intensity = 0;
       removals->indices.push_back(i);
-      marking(kdtree, point, cloud, temp_cloud, removals);
+      marking(point.intensity, kdtree, point, cloud, temp_cloud, removals);
 
       if (temp_cloud->points.size() >= 5) {
         for (int j = 0; j < temp_cloud->points.size(); j++) {
@@ -156,6 +173,7 @@ PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, doubl
 
   NormalEstimation<PointXYZRGB, Normal> ne;
   ne.setInputCloud(cloud);
+  ne.setViewPoint(0.0, CAMERA_HEIGHT, 0.0);
   ne.setSearchMethod(kdtree);
   ne.setRadiusSearch(radius);
   ne.compute(*normals);
@@ -209,19 +227,22 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   PointCloud<PointXYZRGB>::Ptr cloud_converted(new PointCloud<PointXYZRGB>(*cloud));
   PointCloud<PointXYZRGB>::Ptr cloud_transformed = frameTransform(cloud_converted);
 
-  float dist = getPlaneFalloff(*cloud_transformed);
-  ROS_ERROR("%f", dist);
+  float edgeDistance = getPlaneFalloff(*cloud_transformed);
+  ROS_ERROR("Edge: %f", edgeDistance);
 
   downSample(cloud_transformed, 0.05, 0.05, 0.05);
-  cutOff(cloud_transformed, dist);
+  cutOff(cloud_transformed, edgeDistance);
 
-  PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_transformed, 0.05);
-  PointCloud<PointXYZI>::Ptr cloud_analysed = normalAnalysis(cloud_normals, cloud_transformed);
+  float obstacleDistance = getObstacleDistance(cloud_transformed);
+  ROS_ERROR("Obstacle: %f", obstacleDistance);
 
-  //PointCloud<PointXYZI>::Ptr cloud_colored(new PointCloud<PointXYZI>(*cloud_analysed));
-  //PointCloud<PointXYZI>::Ptr cloud_obstacles = markObstacles(cloud_colored);
+  PointCloud<PointXYZRGB>::Ptr cloud_oriented = orientationCorrection(cloud_transformed);
+  PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_oriented, 0.05);
+  PointCloud<PointXYZI>::Ptr cloud_analysed = normalAnalysis(cloud_normals, cloud_oriented);
+
+  PointCloud<PointXYZI>::Ptr cloud_obstacles = markObstacles(cloud_analysed);
   
-  goOrNoGo(dist);
+  goOrNoGo(edgeDistance);
   pub_cloud.publish(*cloud_analysed);
 }
 
@@ -229,7 +250,8 @@ int main(int argc, char **argv) {
   ros::init(argc, argv, "pointcloud_analysis");
   ros::NodeHandle n;
 
-  n.getParam("/pointcloud_analysis/ROVER_WIDTH", ROVER_WIDTH);
+  n.getParam("/pointcloud_analysis/ROVER_OUTER_WIDTH", ROVER_OUTER_WIDTH);
+  n.getParam("/pointcloud_analysis/ROVER_INNER_WIDTH", ROVER_INNER_WIDTH);
   n.getParam("/pointcloud_analysis/CAMERA_ANGLE", CAMERA_ANGLE);
   n.getParam("/pointcloud_analysis/CAMERA_HEIGHT", CAMERA_HEIGHT);
   n.getParam("/pointcloud_analysis/ASCENDING_ANGLE_THRESHOLD", ASCENDING_ANGLE_THRESHOLD);
