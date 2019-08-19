@@ -144,7 +144,7 @@ PointCloud<PointXYZI>::Ptr markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
       removals->indices.push_back(i);
       marking(point.intensity, kdtree, point, cloud, temp_cloud, removals);
 
-      if (temp_cloud->points.size() >= 5) {
+      if (temp_cloud->points.size() >= 15) {
         for (int j = 0; j < temp_cloud->points.size(); j++) {
 	  temp_cloud->points[j].intensity = obstacle_num;
           (*pointholder_cloud).push_back(temp_cloud->points[j]);
