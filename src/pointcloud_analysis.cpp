@@ -29,6 +29,8 @@ float Y_MIN;
 float roll = 0.0;
 float pitch = 0.0;
 
+bool big_obstacle = false;
+
 ros::Publisher pub_cloud;
 ros::Publisher pub_go;
 
@@ -98,7 +100,7 @@ void cutOff(PointCloud<PointXYZRGB>::Ptr cloud, float edgeDistance) {
   pt.filter(*cloud);
 }
 
-float getObstacleDistance(PointCloud<PointXYZRGB>::Ptr cloud) {
+/*float getObstacleDistance(PointCloud<PointXYZRGB>::Ptr cloud) {
   float min_z = -1.0;
   for (int i = 0; i < cloud->points.size(); i++) {
     PointXYZRGB point = cloud->points[i];
@@ -107,10 +109,18 @@ float getObstacleDistance(PointCloud<PointXYZRGB>::Ptr cloud) {
     }
   }
   return min_z;
-}
+}*/
 
-void marking(int intensity, KdTreeFLANN<PointXYZI> kdtree, PointXYZI search_point, PointCloud<PointXYZI>::Ptr cloud, PointCloud<PointXYZI>::Ptr temp_cloud, PointIndices::Ptr removals) {
+void marking(float* y_min, float* y_max, int intensity, KdTreeFLANN<PointXYZI> kdtree, PointXYZI search_point, PointCloud<PointXYZI>::Ptr cloud, PointCloud<PointXYZI>::Ptr temp_cloud, PointIndices::Ptr removals) {
   (*temp_cloud).push_back(search_point);
+  
+  if (search_point.y < *y_min) {
+    *y_min = search_point.y;
+  }
+
+  if (search_point.y > *y_max) {
+    *y_max = search_point.y;
+  }
 	
   std::vector<int> pointIndices;
   std::vector<float> pointDistancesSq;
@@ -122,32 +132,51 @@ void marking(int intensity, KdTreeFLANN<PointXYZI> kdtree, PointXYZI search_poin
     if (point.intensity == intensity) {
       cloud->points[pointIndices[i]].intensity = 0;
       removals->indices.push_back(pointIndices[i]);
-      marking(intensity, kdtree, point, cloud, temp_cloud, removals);
+      marking(y_min, y_max, intensity, kdtree, point, cloud, temp_cloud, removals);
     }
   }
 }
 
-PointCloud<PointXYZI>::Ptr markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
+float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
   KdTreeFLANN<PointXYZI> kdtree;
   kdtree.setInputCloud(cloud);
+
+  big_obstacle = false;
 
   PointCloud<PointXYZI>::Ptr pointholder_cloud(new PointCloud<PointXYZI>());
   PointIndices::Ptr removals(new PointIndices());
   
   int obstacle_num = 1;
+  float z_min = -1.0;
   for (int i = 0; i < cloud->points.size(); i++) {
     PointXYZI point = cloud->points[i];
     if (point.intensity == 1 || point.intensity == 2) {
       PointCloud<PointXYZI>::Ptr temp_cloud(new PointCloud<PointXYZI>());
 
+      float* y_min;
+      float* y_max;
+      *y_min = point.y;
+      *y_max = point.y;
+
       cloud->points[i].intensity = 0;
       removals->indices.push_back(i);
-      marking(point.intensity, kdtree, point, cloud, temp_cloud, removals);
+      marking(y_min, y_max, point.intensity, kdtree, point, cloud, temp_cloud, removals);
 
-      if (temp_cloud->points.size() >= 15) {
+      if (*y_max - *y_min > Y_MAX) {
+	if (temp_cloud->points.size() / cloud->points.size() > 0.85) {
+	  big_obstacle = true;
+	}
+	
+	float z_curr = temp_cloud->points[0].z;
         for (int j = 0; j < temp_cloud->points.size(); j++) {
+	  if (temp_cloud->points[j].z < z_curr) {
+            z_curr = temp_cloud->points[j].z;
+	  }
 	  temp_cloud->points[j].intensity = obstacle_num;
           (*pointholder_cloud).push_back(temp_cloud->points[j]);
+	}
+	if (z_curr < z_min || z_min < 0) {
+	  z_min = z_curr;
 	}
 	obstacle_num++;
       }
@@ -164,7 +193,7 @@ PointCloud<PointXYZI>::Ptr markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
     (*cloud).push_back(pointholder_cloud->points[i]);
   }
 
-  return pointholder_cloud;
+  return z_min;
 }
 
 PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, double radius) {
@@ -233,15 +262,17 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   downSample(cloud_transformed, 0.05, 0.05, 0.05);
   cutOff(cloud_transformed, edgeDistance);
 
-  float obstacleDistance = getObstacleDistance(cloud_transformed);
-  ROS_ERROR("Obstacle: %f", obstacleDistance);
+  //float obstacleDistance = getObstacleDistance(cloud_transformed);
+  //ROS_ERROR("Obstacle: %f", obstacleDistance);
 
   PointCloud<PointXYZRGB>::Ptr cloud_oriented = orientationCorrection(cloud_transformed);
   PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_oriented, 0.05);
   PointCloud<PointXYZI>::Ptr cloud_analysed = normalAnalysis(cloud_normals, cloud_oriented);
 
-  PointCloud<PointXYZI>::Ptr cloud_obstacles = markObstacles(cloud_analysed);
-  
+  float obstacleDistance = markObstacles(cloud_analysed);
+  ROS_ERROR("Big Obstacle: %s", big_obstacle ? "true" : "false");
+  ROS_ERROR("Obstacle: %f", obstacleDistance);
+
   goOrNoGo(edgeDistance);
   pub_cloud.publish(*cloud_analysed);
 }
