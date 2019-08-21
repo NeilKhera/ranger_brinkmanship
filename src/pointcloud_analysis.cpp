@@ -29,8 +29,6 @@ float Y_MIN;
 float roll = 0.0;
 float pitch = 0.0;
 
-bool big_obstacle = false;
-
 ros::Publisher pub_cloud;
 ros::Publisher pub_go;
 
@@ -86,30 +84,33 @@ void downSample(PointCloud<PointXYZRGB>::Ptr cloud, double x_dim, double y_dim, 
   VoxelGrid<PointXYZRGB> vox;
   vox.setInputCloud(cloud);
   vox.setLeafSize(x_dim, y_dim, z_dim);
+  vox.setFilterFieldName("z");
+  vox.setFilterLimits(0, 2.5);
   vox.filter(*cloud);
 }
 
 void cutOff(PointCloud<PointXYZRGB>::Ptr cloud, float edgeDistance) {
   PassThrough<PointXYZRGB> pt;
   pt.setInputCloud(cloud);
-  pt.setFilterFieldName("z");
-  pt.setFilterLimits(0.0, edgeDistance);
-  pt.filter(*cloud);
+  //pt.setFilterFieldName("z");
+  //pt.setFilterLimits(0.0, edgeDistance + 0.25);
+  //pt.filter(*cloud);
   pt.setFilterFieldName("x");
   pt.setFilterLimits(-ROVER_OUTER_WIDTH / 2, ROVER_OUTER_WIDTH / 2);
   pt.filter(*cloud);
 }
 
-/*float getObstacleDistance(PointCloud<PointXYZRGB>::Ptr cloud) {
+float getObstructionDistance(PointCloud<PointXYZRGB>::Ptr cloud) {
   float min_z = -1.0;
   for (int i = 0; i < cloud->points.size(); i++) {
     PointXYZRGB point = cloud->points[i];
+    ROS_ERROR("%f", point.y);
     if (point.y > Y_MAX && (point.z < min_z || min_z < 0)) {
       min_z = point.z;
     }
   }
   return min_z;
-}*/
+}
 
 void marking(float* y_min, float* y_max, int intensity, KdTreeFLANN<PointXYZI> kdtree, PointXYZI search_point, PointCloud<PointXYZI>::Ptr cloud, PointCloud<PointXYZI>::Ptr temp_cloud, PointIndices::Ptr removals) {
   (*temp_cloud).push_back(search_point);
@@ -124,7 +125,7 @@ void marking(float* y_min, float* y_max, int intensity, KdTreeFLANN<PointXYZI> k
 	
   std::vector<int> pointIndices;
   std::vector<float> pointDistancesSq;
-  float radius = 0.05;
+  float radius = 0.06;
   
   kdtree.radiusSearch(search_point, radius, pointIndices, pointDistancesSq);
   for (int i = 0; i < pointIndices.size(); i++) {
@@ -140,8 +141,6 @@ void marking(float* y_min, float* y_max, int intensity, KdTreeFLANN<PointXYZI> k
 float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
   KdTreeFLANN<PointXYZI> kdtree;
   kdtree.setInputCloud(cloud);
-
-  big_obstacle = false;
 
   PointCloud<PointXYZI>::Ptr pointholder_cloud(new PointCloud<PointXYZI>());
   PointIndices::Ptr removals(new PointIndices());
@@ -160,12 +159,7 @@ float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
       removals->indices.push_back(i);
       marking(y_min, y_max, point.intensity, kdtree, point, cloud, temp_cloud, removals);
 
-      ROS_ERROR("%f", *y_max - *y_min);
       if (*y_max - *y_min > Y_MAX) {
-	if (temp_cloud->points.size() / cloud->points.size() > 0.85) {
-	  big_obstacle = true;
-	}
-	
 	float z_curr = temp_cloud->points[0].z;
         for (int j = 0; j < temp_cloud->points.size(); j++) {
 	  if (temp_cloud->points[j].z < z_curr) {
@@ -258,19 +252,18 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   float edgeDistance = getPlaneFalloff(*cloud_transformed);
   ROS_ERROR("Edge: %f", edgeDistance);
 
-  downSample(cloud_transformed, 0.05, 0.05, 0.05);
+  downSample(cloud_transformed, 0.025, 0.025, 0.025);
   cutOff(cloud_transformed, edgeDistance);
 
-  //float obstacleDistance = getObstacleDistance(cloud_transformed);
-  //ROS_ERROR("Obstacle: %f", obstacleDistance);
+  float obstructionDistance = getObstructionDistance(cloud_transformed);
+  ROS_ERROR("Obstruction: %f", obstructionDistance);
 
   PointCloud<PointXYZRGB>::Ptr cloud_oriented = orientationCorrection(cloud_transformed);
-  PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_oriented, 0.05);
+  PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_oriented, 0.08);
   PointCloud<PointXYZI>::Ptr cloud_analysed = normalAnalysis(cloud_normals, cloud_oriented);
 
-  //float obstacleDistance = markObstacles(cloud_analysed);
-  //ROS_ERROR("Big Obstacle: %s", big_obstacle ? "true" : "false");
-  //ROS_ERROR("Obstacle: %f", obstacleDistance);
+  float obstacleDistance = markObstacles(cloud_analysed);
+  ROS_ERROR("Obstacle: %f", obstacleDistance);
 
   goOrNoGo(edgeDistance);
   pub_cloud.publish(*cloud_analysed);
