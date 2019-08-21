@@ -45,8 +45,8 @@ PointCloud<PointXYZRGB>::Ptr frameTransform(PointCloud<PointXYZRGB>::Ptr cloud) 
 
 PointCloud<PointXYZRGB>::Ptr orientationCorrection(PointCloud<PointXYZRGB>::Ptr cloud) {
   Eigen::Affine3f transform_matrix = Eigen::Affine3f::Identity();
-  transform_matrix.rotate(Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitX()));
-  transform_matrix.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitZ()));
+  transform_matrix.rotate(Eigen::AngleAxisf(-pitch, Eigen::Vector3f::UnitY()));
+  transform_matrix.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitX()));
 
   PointCloud<PointXYZRGB>::Ptr cloud_corrected (new PointCloud<PointXYZRGB>());
   transformPointCloud(*cloud, *cloud_corrected, transform_matrix);
@@ -63,7 +63,9 @@ float getPlaneFalloff(PointCloud<PointXYZRGB> cloud) {
       PointXYZRGB point = cloud.at(j, i);
 
       if (!isnan(point.x)) {
-        if (std::abs(point.z - prev_z[j]) > -Z_MIN && std::abs(point.y) > ROVER_INNER_WIDTH / 2 && std::abs(point.y) < ROVER_OUTER_WIDTH / 2) {
+	float deltaZ = point.z - prev_z[j];
+	float dispY = std::abs(point.y);
+        if ((deltaZ > Z_MAX || deltaZ < Z_MIN) && dispY > ROVER_INNER_WIDTH / 2 && dispY < ROVER_OUTER_WIDTH / 2) {
 	  return prev_x[j];
         }
         prev_z[j] = point.z;
@@ -112,15 +114,15 @@ float getObstructionDistance(PointCloud<PointXYZRGB>::Ptr cloud) {
   return min_x;
 }
 
-void marking(float* y_min, float* y_max, int intensity, KdTreeFLANN<PointXYZI> kdtree, PointXYZI search_point, PointCloud<PointXYZI>::Ptr cloud, PointCloud<PointXYZI>::Ptr temp_cloud, PointIndices::Ptr removals) {
+void marking(float* z_min, float* z_max, int intensity, KdTreeFLANN<PointXYZI> kdtree, PointXYZI search_point, PointCloud<PointXYZI>::Ptr cloud, PointCloud<PointXYZI>::Ptr temp_cloud, PointIndices::Ptr removals) {
   (*temp_cloud).push_back(search_point);
   
-  if (search_point.y < *y_min) {
-    *y_min = search_point.y;
+  if (search_point.z < *z_min) {
+    *z_min = search_point.z;
   }
 
-  if (search_point.y > *y_max) {
-    *y_max = search_point.y;
+  if (search_point.z > *z_max) {
+    *z_max = search_point.z;
   }
 	
   std::vector<int> pointIndices;
@@ -133,7 +135,7 @@ void marking(float* y_min, float* y_max, int intensity, KdTreeFLANN<PointXYZI> k
     if (point.intensity == intensity) {
       cloud->points[pointIndices[i]].intensity = 0;
       removals->indices.push_back(pointIndices[i]);
-      marking(y_min, y_max, intensity, kdtree, point, cloud, temp_cloud, removals);
+      marking(z_min, z_max, intensity, kdtree, point, cloud, temp_cloud, removals);
     }
   }
 }
@@ -146,30 +148,30 @@ float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
   PointIndices::Ptr removals(new PointIndices());
  
   int obstacle_num = 1;
-  float z_min = -1.0;
+  float x_min = -1.0;
   for (int i = 0; i < cloud->points.size(); i++) {
     PointXYZI point = cloud->points[i];
     if (point.intensity == 1 || point.intensity == 2) {
       PointCloud<PointXYZI>::Ptr temp_cloud(new PointCloud<PointXYZI>());
 
-      float* y_min = new float(point.y);
-      float* y_max = new float(point.y);
+      float* z_min = new float(point.z);
+      float* z_max = new float(point.z);
 
       cloud->points[i].intensity = 0;
       removals->indices.push_back(i);
-      marking(y_min, y_max, point.intensity, kdtree, point, cloud, temp_cloud, removals);
+      marking(z_min, z_max, point.intensity, kdtree, point, cloud, temp_cloud, removals);
 
-      if (*y_max - *y_min > Z_MAX) {
-	float z_curr = temp_cloud->points[0].z;
+      if (*z_max - *z_min > Z_MAX) {
+	float x_curr = temp_cloud->points[0].x;
         for (int j = 0; j < temp_cloud->points.size(); j++) {
-	  if (temp_cloud->points[j].z < z_curr) {
-            z_curr = temp_cloud->points[j].z;
+	  if (temp_cloud->points[j].x < x_curr) {
+            x_curr = temp_cloud->points[j].x;
 	  }
 	  temp_cloud->points[j].intensity = obstacle_num;
           (*pointholder_cloud).push_back(temp_cloud->points[j]);
 	}
-	if (z_curr < z_min || z_min < 0) {
-	  z_min = z_curr;
+	if (x_curr < x_min || x_min < 0) {
+	  x_min = x_curr;
 	}
 	obstacle_num++;
       }
@@ -186,7 +188,7 @@ float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
     (*cloud).push_back(pointholder_cloud->points[i]);
   }
 
-  return z_min;
+  return x_min;
 }
 
 PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, double radius) {
@@ -195,7 +197,7 @@ PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, doubl
 
   NormalEstimation<PointXYZRGB, Normal> ne;
   ne.setInputCloud(cloud);
-  ne.setViewPoint(0.0, CAMERA_HEIGHT, 0.0);
+  ne.setViewPoint(CAMERA_HEIGHT, 0.0, 0.0);
   ne.setSearchMethod(kdtree);
   ne.setRadiusSearch(radius);
   ne.compute(*normals);
@@ -208,7 +210,7 @@ PointCloud<PointXYZI>::Ptr normalAnalysis(PointCloud<Normal>::Ptr normals, Point
   output_cloud->header.frame_id = cloud->header.frame_id;
 
   for (int i = 0; i < normals->points.size(); i++) {
-    float dot = -normals->points[i].normal_y;
+    float dot = normals->points[i].normal_z;
     float theta = std::acos(dot);
 
     PointXYZRGB point = cloud->points[i];
@@ -217,9 +219,9 @@ PointCloud<PointXYZI>::Ptr normalAnalysis(PointCloud<Normal>::Ptr normals, Point
     p.y = point.y;
     p.z = point.z;
 
-    if (normals->points[i].normal_z < 0 && theta > ASCENDING_ANGLE_THRESHOLD && theta < M_PI - ASCENDING_ANGLE_THRESHOLD) {
+    if (normals->points[i].normal_x < 0 && theta > ASCENDING_ANGLE_THRESHOLD && theta < M_PI - ASCENDING_ANGLE_THRESHOLD) {
       p.intensity = 1;
-    } else if (normals->points[i].normal_z >= 0 && theta > DESCENDING_ANGLE_THRESHOLD && theta < M_PI - DESCENDING_ANGLE_THRESHOLD) {
+    } else if (normals->points[i].normal_x >= 0 && theta > DESCENDING_ANGLE_THRESHOLD && theta < M_PI - DESCENDING_ANGLE_THRESHOLD) {
       p.intensity = 2;
     } else {
       p.intensity = 0;
@@ -230,11 +232,11 @@ PointCloud<PointXYZI>::Ptr normalAnalysis(PointCloud<Normal>::Ptr normals, Point
   return output_cloud;
 }
 
-void goOrNoGo(float distance) {
+void goOrNoGo(float edgeDistance, float obstructionDistance, float obstacleDistance) {
   std_msgs::Bool go;
   go.data = true;
 
-  if (distance < EDGE_THRESHOLD) {
+  if (edgeDistance < EDGE_THRESHOLD || obstructionDistance < EDGE_THRESHOLD || obstacleDistance < EDGE_THRESHOLD) {
     go.data = false;
   }
   pub_go.publish(go);
@@ -258,15 +260,15 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
   float obstructionDistance = getObstructionDistance(cloud_transformed);
   ROS_ERROR("Obstruction: %f", obstructionDistance);
 
-  /*PointCloud<PointXYZRGB>::Ptr cloud_oriented = orientationCorrection(cloud_transformed);
+  PointCloud<PointXYZRGB>::Ptr cloud_oriented = orientationCorrection(cloud_transformed);
   PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_oriented, 0.08);
   PointCloud<PointXYZI>::Ptr cloud_analysed = normalAnalysis(cloud_normals, cloud_oriented);
 
   float obstacleDistance = markObstacles(cloud_analysed);
   ROS_ERROR("Obstacle: %f", obstacleDistance);
 
-  goOrNoGo(edgeDistance);*/
-  pub_cloud.publish(*cloud_transformed);
+  goOrNoGo(edgeDistance, obstructionDistance, obstacleDistance);
+  pub_cloud.publish(*cloud_analysed);
 }
 
 int main(int argc, char **argv) {
