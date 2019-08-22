@@ -20,6 +20,7 @@ float ROVER_OUTER_WIDTH;
 float ROVER_INNER_WIDTH;
 float CAMERA_ANGLE;
 float CAMERA_HEIGHT;
+float CAMERA_X_LIMIT;
 float ASCENDING_ANGLE_THRESHOLD;
 float DESCENDING_ANGLE_THRESHOLD;
 float EDGE_THRESHOLD;
@@ -88,26 +89,23 @@ void downSample(PointCloud<PointXYZRGB>::Ptr cloud, double x_dim, double y_dim, 
   vox.setInputCloud(cloud);
   vox.setLeafSize(x_dim, y_dim, z_dim);
   vox.setFilterFieldName("x");
-  vox.setFilterLimits(0, 2.5);
+  vox.setFilterLimits(0, CAMERA_X_LIMIT);
   vox.filter(*cloud);
 }
 
 void cutOff(PointCloud<PointXYZRGB>::Ptr cloud, float edgeDistance) {
   PassThrough<PointXYZRGB> pt;
   pt.setInputCloud(cloud);
-  //pt.setFilterFieldName("x");
-  //pt.setFilterLimits(0.0, edgeDistance + 0.25);
-  //pt.filter(*cloud);
   pt.setFilterFieldName("y");
   pt.setFilterLimits(-ROVER_OUTER_WIDTH / 2, ROVER_OUTER_WIDTH / 2);
   pt.filter(*cloud);
 }
 
 float getObstructionDistance(PointCloud<PointXYZRGB>::Ptr cloud) {
-  float min_x = -1.0;
+  float min_x = CAMERA_X_LIMIT;
   for (int i = 0; i < cloud->points.size(); i++) {
     PointXYZRGB point = cloud->points[i];
-    if (point.z > Z_MAX && (point.x < min_x || min_x < 0)) {
+    if (point.z > Z_MAX && point.x < min_x) {
       min_x = point.x;
     }
   }
@@ -148,7 +146,7 @@ float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
   PointIndices::Ptr removals(new PointIndices());
  
   int obstacle_num = 1;
-  float x_min = -1.0;
+  float x_min = CAMERA_X_LIMIT;
   for (int i = 0; i < cloud->points.size(); i++) {
     PointXYZI point = cloud->points[i];
     if (point.intensity == 1 || point.intensity == 2) {
@@ -170,7 +168,7 @@ float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
 	  temp_cloud->points[j].intensity = obstacle_num;
           (*pointholder_cloud).push_back(temp_cloud->points[j]);
 	}
-	if (x_curr < x_min || x_min < 0) {
+	if (x_curr < x_min) {
 	  x_min = x_curr;
 	}
 	obstacle_num++;
@@ -279,6 +277,7 @@ int main(int argc, char **argv) {
   n.getParam("/pointcloud_analysis/ROVER_INNER_WIDTH", ROVER_INNER_WIDTH);
   n.getParam("/pointcloud_analysis/CAMERA_ANGLE", CAMERA_ANGLE);
   n.getParam("/pointcloud_analysis/CAMERA_HEIGHT", CAMERA_HEIGHT);
+  n.getParam("/pointcloud_analysis/CAMERA_X_LIMIT", CAMERA_X_LIMIT);
   n.getParam("/pointcloud_analysis/ASCENDING_ANGLE_THRESHOLD", ASCENDING_ANGLE_THRESHOLD);
   n.getParam("/pointcloud_analysis/DESCENDING_ANGLE_THRESHOLD", DESCENDING_ANGLE_THRESHOLD);
   n.getParam("/pointcloud_analysis/EDGE_THRESHOLD", EDGE_THRESHOLD);
