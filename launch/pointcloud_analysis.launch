@@ -8,11 +8,11 @@
   <node pkg="pointcloud_analysis" type="pointcloud_analysis" name="pointcloud_analysis" launch-prefix="bash -c 'sleep 1.0; $0 $@' ">
     <param name = "ROVER_OUTER_WIDTH" value = "0.65"/>
     <param name = "ROVER_INNER_WIDTH" value = " 0.225"/>
-    <param name = "CAMERA_ANGLE" value = "0.580"/>
-    <param name = "CAMERA_HEIGHT" value = "0.435"/>
+    <param name = "CAMERA_ANGLE" value = "0.850"/>
+    <param name = "CAMERA_HEIGHT" value = "0.415"/>
     <param name = "CAMERA_X_LIMIT" value = "2.5"/>
-    <param name = "ASCENDING_ANGLE_THRESHOLD" value = "0.25"/>
-    <param name = "DESCENDING_ANGLE_THRESHOLD" value = "0.25"/>
+    <param name = "ASCENDING_ANGLE_THRESHOLD" value = "0.785"/>
+    <param name = "DESCENDING_ANGLE_THRESHOLD" value = "0.524"/>
     <param name = "EDGE_THRESHOLD" value = "0.20"/>
     <param name = "Z_MAX" value = "0.20"/>
     <param name = "Z_MIN" value = "-0.20"/>

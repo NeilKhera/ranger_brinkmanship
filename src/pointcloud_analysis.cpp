@@ -59,7 +59,8 @@ float getPlaneFalloff(PointCloud<PointXYZRGB> cloud) {
   float prev_x[cloud.width] = {};
 
   int spacing = 10;
-  for (int i = cloud.height - 1; i >= 0; i -= spacing) {
+  int roverBodyPointRemoval = 20;
+  for (int i = cloud.height - 1 - roverBodyPointRemoval; i >= 0; i -= spacing) {
     for (int j = 0; j < cloud.width; j += spacing) {
       PointXYZRGB point = cloud.at(j, i);
 
@@ -89,7 +90,7 @@ void downSample(PointCloud<PointXYZRGB>::Ptr cloud, double x_dim, double y_dim, 
   vox.setInputCloud(cloud);
   vox.setLeafSize(x_dim, y_dim, z_dim);
   vox.setFilterFieldName("x");
-  vox.setFilterLimits(0, CAMERA_X_LIMIT);
+  vox.setFilterLimits(0.1, CAMERA_X_LIMIT);
   vox.filter(*cloud);
 }
 
