@@ -139,6 +139,10 @@ void marking(float* z_min, float* z_max, int intensity, KdTreeFLANN<PointXYZI> k
   }
 }
 
+float distance(PointXYZI point) {
+  return std::sqrt(point.x * point.x + point.y * point.y + point.z * point.z);
+}
+
 float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
   KdTreeFLANN<PointXYZI> kdtree;
   kdtree.setInputCloud(cloud);
@@ -147,7 +151,7 @@ float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
   PointIndices::Ptr removals(new PointIndices());
  
   int obstacle_num = 1;
-  float x_min = CAMERA_X_LIMIT;
+  float d_min = CAMERA_X_LIMIT;
   for (int i = 0; i < cloud->points.size(); i++) {
     PointXYZI point = cloud->points[i];
     if (point.intensity == 1 || point.intensity == 2) {
@@ -161,16 +165,16 @@ float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
       marking(z_min, z_max, point.intensity, kdtree, point, cloud, temp_cloud, removals);
 
       if (*z_max - *z_min > Z_MAX) {
-	float x_curr = temp_cloud->points[0].x;
+	float d_curr = distance(temp_cloud->points[0]);
         for (int j = 0; j < temp_cloud->points.size(); j++) {
-	  if (temp_cloud->points[j].x < x_curr) {
-            x_curr = temp_cloud->points[j].x;
+	  if (distance(temp_cloud->points[j]) < d_curr) {
+            d_curr = distance(temp_cloud->points[j]);
 	  }
 	  temp_cloud->points[j].intensity = obstacle_num;
           (*pointholder_cloud).push_back(temp_cloud->points[j]);
 	}
-	if (x_curr < x_min) {
-	  x_min = x_curr;
+	if (d_curr < d_min) {
+	  d_min = d_curr;
 	}
 	obstacle_num++;
       }
@@ -187,7 +191,7 @@ float markObstacles(PointCloud<PointXYZI>::Ptr cloud) {
     (*cloud).push_back(pointholder_cloud->points[i]);
   }
 
-  return x_min;
+  return d_min;
 }
 
 PointCloud<Normal>::Ptr computeNormals(PointCloud<PointXYZRGB>::Ptr cloud, double radius) {
