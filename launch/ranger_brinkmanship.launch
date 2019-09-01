@@ -5,7 +5,7 @@
     <arg name="infra_fps" value="15"/>
     <arg name="color_fps" value="15"/>
   </include>
-  <node pkg="pointcloud_analysis" type="pointcloud_analysis" name="pointcloud_analysis" launch-prefix="bash -c 'sleep 1.0; $0 $@' ">
+  <node pkg="ranger_brinkmanship" type="ranger_brinkmanship" name="ranger_brinkmanship">
     <param name = "ROVER_OUTER_WIDTH" value = "0.65"/>
     <param name = "ROVER_INNER_WIDTH" value = " 0.225"/>
     <param name = "CAMERA_ANGLE" value = "0.850"/>

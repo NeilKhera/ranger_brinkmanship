@@ -1,5 +1,3 @@
-#include "tic_toc.h"
-
 #include <math.h>
 #include <std_msgs/Bool.h>
 #include <geometry_msgs/Vector3Stamped.h>
@@ -275,25 +273,25 @@ void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
 }
 
 int main(int argc, char **argv) {
-  ros::init(argc, argv, "pointcloud_analysis");
+  ros::init(argc, argv, "ranger_brinkmanship");
   ros::NodeHandle n;
 
-  n.getParam("/pointcloud_analysis/ROVER_OUTER_WIDTH", ROVER_OUTER_WIDTH);
-  n.getParam("/pointcloud_analysis/ROVER_INNER_WIDTH", ROVER_INNER_WIDTH);
-  n.getParam("/pointcloud_analysis/CAMERA_ANGLE", CAMERA_ANGLE);
-  n.getParam("/pointcloud_analysis/CAMERA_HEIGHT", CAMERA_HEIGHT);
-  n.getParam("/pointcloud_analysis/CAMERA_X_LIMIT", CAMERA_X_LIMIT);
-  n.getParam("/pointcloud_analysis/ASCENDING_ANGLE_THRESHOLD", ASCENDING_ANGLE_THRESHOLD);
-  n.getParam("/pointcloud_analysis/DESCENDING_ANGLE_THRESHOLD", DESCENDING_ANGLE_THRESHOLD);
-  n.getParam("/pointcloud_analysis/EDGE_THRESHOLD", EDGE_THRESHOLD);
-  n.getParam("/pointcloud_analysis/Z_MAX", Z_MAX);
-  n.getParam("/pointcloud_analysis/Z_MIN", Z_MIN);
+  n.getParam("/ranger_brinkmanship/ROVER_OUTER_WIDTH", ROVER_OUTER_WIDTH);
+  n.getParam("/ranger_brinkmanship/ROVER_INNER_WIDTH", ROVER_INNER_WIDTH);
+  n.getParam("/ranger_brinkmanship/CAMERA_ANGLE", CAMERA_ANGLE);
+  n.getParam("/ranger_brinkmanship/CAMERA_HEIGHT", CAMERA_HEIGHT);
+  n.getParam("/ranger_brinkmanship/CAMERA_X_LIMIT", CAMERA_X_LIMIT);
+  n.getParam("/ranger_brinkmanship/ASCENDING_ANGLE_THRESHOLD", ASCENDING_ANGLE_THRESHOLD);
+  n.getParam("/ranger_brinkmanship/DESCENDING_ANGLE_THRESHOLD", DESCENDING_ANGLE_THRESHOLD);
+  n.getParam("/ranger_brinkmanship/EDGE_THRESHOLD", EDGE_THRESHOLD);
+  n.getParam("/ranger_brinkmanship/Z_MAX", Z_MAX);
+  n.getParam("/ranger_brinkmanship/Z_MIN", Z_MIN);
 
   ros::Subscriber sub_orientation = n.subscribe("/ak2/imu/rpy", 1, orientationCallback);
   ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>("/camera/depth_registered/points", 1, pointcloudCallback);
 
-  pub_cloud = n.advertise<PointCloud<PointXYZI>>("/pointcloud/analysis/points", 1);
-  pub_go = n.advertise<std_msgs::Bool>("/pointcloud/analysis/go", 1);
+  pub_cloud = n.advertise<PointCloud<PointXYZI>>("/ranger/brinkmanship/points", 1);
+  pub_go = n.advertise<std_msgs::Bool>("/ranger/brinkmanship/go", 1);
   
   ros::spin();
   return 0;
