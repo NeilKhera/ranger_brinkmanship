@@ -14,6 +14,8 @@
 
 using namespace pcl;
 
+string POINTCLOUD_ROSTOPIC;
+
 float ROVER_OUTER_WIDTH;
 float ROVER_INNER_WIDTH;
 float CAMERA_ANGLE;
@@ -276,6 +278,7 @@ int main(int argc, char **argv) {
   ros::init(argc, argv, "ranger_brinkmanship");
   ros::NodeHandle n;
 
+  n.getParam("/ranger_brinkmanship/POINTCLOUD_ROSTOPIC", POINTCLOUD_ROSTOPIC);
   n.getParam("/ranger_brinkmanship/ROVER_OUTER_WIDTH", ROVER_OUTER_WIDTH);
   n.getParam("/ranger_brinkmanship/ROVER_INNER_WIDTH", ROVER_INNER_WIDTH);
   n.getParam("/ranger_brinkmanship/CAMERA_ANGLE", CAMERA_ANGLE);
@@ -288,7 +291,7 @@ int main(int argc, char **argv) {
   n.getParam("/ranger_brinkmanship/Z_MIN", Z_MIN);
 
   ros::Subscriber sub_orientation = n.subscribe("/ak2/imu/rpy", 1, orientationCallback);
-  ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>("/camera/depth_registered/points", 1, pointcloudCallback);
+  ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>(POINTCLOUD_ROSTOPIC, 1, pointcloudCallback);
 
   pub_cloud = n.advertise<PointCloud<PointXYZI>>("/ranger/brinkmanship/points", 1);
   pub_go = n.advertise<std_msgs::Bool>("/ranger/brinkmanship/go", 1);
