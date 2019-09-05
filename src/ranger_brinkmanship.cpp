@@ -14,7 +14,7 @@
 
 using namespace pcl;
 
-string POINTCLOUD_ROSTOPIC;
+std::string POINTCLOUD_ROSTOPIC;
 
 float ROVER_OUTER_WIDTH;
 float ROVER_INNER_WIDTH;
