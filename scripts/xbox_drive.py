@@ -5,8 +5,11 @@ from roboclaw.roboclaw import RoboClaw
 from std_msgs.msg import Bool
 from sensor_msgs.msg import Joy
 
+# TODO: Convert node to use msgs of type Twist.msg, and use teleop_twist_joy as a
+# interface
+
 class XboxDriver(object):
-    DRIVE_SPEED = 5000
+    DRIVE_SPEED = 10000
     DRIVE_STEER = 1000
     DRIVE_ACCEL = 100
 
@@ -81,12 +84,35 @@ class XboxDriver(object):
         rospy.Subscriber('/ranger/brinkmanship/go', Bool, self._safeguard_callback)
         rospy.Subscriber('/joy', Joy, self._drive_callback)
 
+        self.drive_enabled = False
+        self.safeguarded = False
+        rospy.Timer(rospy.Duration(0.5), self._timer_callback)
+
         rospy.loginfo("XboxDriver: Started")
         rospy.spin()
 
+    def _timer_callback(self, event):
+        if self.safeguarded == True:
+            self.safeguarded = False
+        else:
+            self.drive_enabled = False
+            rospy.logerr('Safeguarding offline! Drive disabled!')
+            for claw in self._roboclaws.values():
+                claw.SpeedAccelDeccelPositionM1(0, 0, 0, 0, 1)
+                claw.SpeedM2(0)
+
     def _safeguard_callback(self, msg):
-        if msg.data == False and self.safe == True:
+        if self.drive_enabled == False:
+            self.drive_enabled = True
+            rospy.logwarn('Safeguarding online! Drive enabled!')
+        self.safeguarded = True
+        
+        if msg.data == True and self.safe == False:
+            rospy.logwarn('Safe to drive!')
+            self.safe = True
+        elif msg.data == False and self.safe == True:
             rospy.logwarn('Untraversable terrain ahead! Stop!')
+            self.safe = False
             for claw in self._roboclaws.values():
                 claw.SpeedAccelDeccelPositionM1(0, 0, 0, 0, 1)
                 claw.SpeedM2(0)
@@ -98,7 +124,7 @@ class XboxDriver(object):
         speed_value = self.DRIVE_SPEED * msg.axes[1];
         steer_value = self.DRIVE_STEER * msg.axes[3];
  
-        if self.safe == True:
+        if self.drive_enabled == True and (self.safe == True or speed_value < 0):
             claw_front.SpeedAccelDeccelPositionM1(0, 0, 0, int(steer_value), 1)
             claw_rear.SpeedAccelDeccelPositionM1(0, 0, 0, -int(steer_value), 1)
             claw_front.SpeedM2(int(speed_value))

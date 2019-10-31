@@ -1,2 +1,13 @@
 <launch>
+  <arg name="joy_dev" default="/dev/input/js0" />
+
+  <include file="$(find ranger_brinkmanship)/launch/realsense_brinkmanship.launch"/>
+  
+  <node pkg="ranger_brinkmanship" name="xbox_drive" type="xbox_drive.py"/>
+  
+  <node pkg="joy" type="joy_node" name="joy_node">
+    <param name="dev" value="$(arg joy_dev)" />
+    <param name="deadzone" value="0.1" />
+    <param name="coalesce_interval" value="0.1" />
+  </node>
 </launch>

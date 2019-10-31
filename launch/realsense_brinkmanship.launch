@@ -12,6 +12,7 @@
     <param name = "CAMERA_ANGLE" value = "0.850"/>
     <param name = "CAMERA_HEIGHT" value = "0.415"/>
     <param name = "CAMERA_X_LIMIT" value = "2.5"/>
+    <param name = "ROLL_THRESHOLD" value = "0.524"/>
     <param name = "ASCENDING_ANGLE_THRESHOLD" value = "0.785"/>
     <param name = "DESCENDING_ANGLE_THRESHOLD" value = "0.524"/>
     <param name = "EDGE_THRESHOLD" value = "0.20"/>

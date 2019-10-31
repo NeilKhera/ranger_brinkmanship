@@ -1,6 +1,7 @@
 #include <math.h>
 #include <std_msgs/Bool.h>
 #include <geometry_msgs/Vector3Stamped.h>
+#include <ranger_brinkmanship/Distances.h>
 #include <pcl/common/transforms.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/filters/passthrough.h>
@@ -21,6 +22,7 @@ float ROVER_INNER_WIDTH;
 float CAMERA_ANGLE;
 float CAMERA_HEIGHT;
 float CAMERA_X_LIMIT;
+float ROLL_THRESHOLD;
 float ASCENDING_ANGLE_THRESHOLD;
 float DESCENDING_ANGLE_THRESHOLD;
 float EDGE_THRESHOLD;
@@ -31,6 +33,7 @@ float roll = 0.0;
 float pitch = 0.0;
 
 ros::Publisher pub_cloud;
+ros::Publisher pub_diag;
 ros::Publisher pub_go;
 
 PointCloud<PointXYZRGB>::Ptr frameTransform(PointCloud<PointXYZRGB>::Ptr cloud) {
@@ -239,7 +242,9 @@ void goOrNoGo(float edgeDistance, float obstructionDistance, float obstacleDista
   std_msgs::Bool go;
   go.data = true;
 
-  if (edgeDistance < EDGE_THRESHOLD || obstructionDistance < EDGE_THRESHOLD || obstacleDistance < EDGE_THRESHOLD) {
+  if (roll > ROLL_THRESHOLD || roll < -ROLL_THRESHOLD || 
+      pitch > ASCENDING_ANGLE_THRESHOLD || pitch < -DESCENDING_ANGLE_THRESHOLD ||
+      edgeDistance < EDGE_THRESHOLD || obstructionDistance < EDGE_THRESHOLD || obstacleDistance < EDGE_THRESHOLD) {
     go.data = false;
   }
   pub_go.publish(go);
@@ -251,25 +256,28 @@ void orientationCallback(const geometry_msgs::Vector3Stamped::ConstPtr &vector_m
 }
 
 void pointcloudCallback(const PointCloud<PointXYZRGB>::ConstPtr &cloud) {
+  ranger_brinkmanship::Distances dists;
+
   PointCloud<PointXYZRGB>::Ptr cloud_converted(new PointCloud<PointXYZRGB>(*cloud));
   PointCloud<PointXYZRGB>::Ptr cloud_transformed = frameTransform(cloud_converted);
 
   float edgeDistance = getPlaneFalloff(*cloud_transformed);
-  ROS_ERROR("Edge: %f", edgeDistance);
+  dists.edge = edgeDistance;
 
   downSample(cloud_transformed, 0.025, 0.025, 0.025);
   cutOff(cloud_transformed, edgeDistance);
 
   float obstructionDistance = getObstructionDistance(cloud_transformed);
-  ROS_ERROR("Obstruction: %f", obstructionDistance);
+  dists.obstruction = obstructionDistance;
 
   PointCloud<PointXYZRGB>::Ptr cloud_oriented = orientationCorrection(cloud_transformed);
   PointCloud<Normal>::Ptr cloud_normals = computeNormals(cloud_oriented, 0.08);
   PointCloud<PointXYZI>::Ptr cloud_analysed = normalAnalysis(cloud_normals, cloud_oriented);
 
   float obstacleDistance = markObstacles(cloud_analysed);
-  ROS_ERROR("Obstacle: %f", obstacleDistance);
+  dists.obstacle = obstacleDistance;
 
+  pub_diag.publish(dists);
   goOrNoGo(edgeDistance, obstructionDistance, obstacleDistance);
   pub_cloud.publish(*cloud_analysed);
 }
@@ -284,6 +292,7 @@ int main(int argc, char **argv) {
   n.getParam("/ranger_brinkmanship/CAMERA_ANGLE", CAMERA_ANGLE);
   n.getParam("/ranger_brinkmanship/CAMERA_HEIGHT", CAMERA_HEIGHT);
   n.getParam("/ranger_brinkmanship/CAMERA_X_LIMIT", CAMERA_X_LIMIT);
+  n.getParam("/ranger_brinkmanship/ROLL_THRESHOLD", ROLL_THRESHOLD);
   n.getParam("/ranger_brinkmanship/ASCENDING_ANGLE_THRESHOLD", ASCENDING_ANGLE_THRESHOLD);
   n.getParam("/ranger_brinkmanship/DESCENDING_ANGLE_THRESHOLD", DESCENDING_ANGLE_THRESHOLD);
   n.getParam("/ranger_brinkmanship/EDGE_THRESHOLD", EDGE_THRESHOLD);
@@ -294,6 +303,7 @@ int main(int argc, char **argv) {
   ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>(POINTCLOUD_ROSTOPIC, 1, pointcloudCallback);
 
   pub_cloud = n.advertise<PointCloud<PointXYZI>>("/ranger/brinkmanship/points", 1);
+  pub_diag = n.advertise<ranger_brinkmanship::Distances>("/ranger/brinkmanship/diagnostics", 1);
   pub_go = n.advertise<std_msgs::Bool>("/ranger/brinkmanship/go", 1);
   
   ros::spin();
