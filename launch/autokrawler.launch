@@ -1,6 +1,12 @@
 <launch>
   <arg name="joy_dev" default="/dev/input/js0" />
 
+  <node pkg="um7" name="um7_driver" type="um7_driver">
+    <param name="port" value="/dev/imu" />
+    <param name="mag_updates" value="false" />
+    <param name="zero_gyros" value="true" />
+  </node>
+
   <include file="$(find ranger_brinkmanship)/launch/realsense_brinkmanship.launch"/>
   
   <node pkg="ranger_brinkmanship" name="xbox_drive" type="xbox_drive.py"/>

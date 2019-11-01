@@ -5,11 +5,8 @@ from roboclaw.roboclaw import RoboClaw
 from std_msgs.msg import Bool
 from sensor_msgs.msg import Joy
 
-# TODO: Convert node to use msgs of type Twist.msg, and use teleop_twist_joy as a
-# interface
-
 class XboxDriver(object):
-    DRIVE_SPEED = 10000
+    DRIVE_SPEED = 5000
     DRIVE_STEER = 1000
     DRIVE_ACCEL = 100
 
@@ -98,7 +95,6 @@ class XboxDriver(object):
             self.drive_enabled = False
             rospy.logerr('Safeguarding offline! Drive disabled!')
             for claw in self._roboclaws.values():
-                claw.SpeedAccelDeccelPositionM1(0, 0, 0, 0, 1)
                 claw.SpeedM2(0)
 
     def _safeguard_callback(self, msg):
@@ -114,21 +110,24 @@ class XboxDriver(object):
             rospy.logwarn('Untraversable terrain ahead! Stop!')
             self.safe = False
             for claw in self._roboclaws.values():
-                claw.SpeedAccelDeccelPositionM1(0, 0, 0, 0, 1)
                 claw.SpeedM2(0)
 
     def _drive_callback(self, msg):
         claw_front = self._roboclaws['front']
         claw_rear = self._roboclaws['rear']
 
-        speed_value = self.DRIVE_SPEED * msg.axes[1];
-        steer_value = self.DRIVE_STEER * msg.axes[3];
- 
-        if self.drive_enabled == True and (self.safe == True or speed_value < 0):
+        if msg.buttons[2] == 1:
+            claw_front.SpeedM2(0)
+            claw_rear.SpeedM2(0)
+        else:
+            speed_value = self.DRIVE_SPEED * msg.axes[1];
+            steer_value = self.DRIVE_STEER * msg.axes[3];
+
             claw_front.SpeedAccelDeccelPositionM1(0, 0, 0, int(steer_value), 1)
             claw_rear.SpeedAccelDeccelPositionM1(0, 0, 0, -int(steer_value), 1)
-            claw_front.SpeedM2(int(speed_value))
-            claw_rear.SpeedM2(int(speed_value)) 
+            if (self.drive_enabled == True or speed_value == 0) and (self.safe == True or speed_value <= 0):
+                claw_front.SpeedM2(int(speed_value))
+                claw_rear.SpeedM2(int(speed_value)) 
 
     def _shutdown_callback(self):
         rospy.logwarn("Killing RoboClawDriver")

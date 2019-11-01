@@ -299,7 +299,7 @@ int main(int argc, char **argv) {
   n.getParam("/ranger_brinkmanship/Z_MAX", Z_MAX);
   n.getParam("/ranger_brinkmanship/Z_MIN", Z_MIN);
 
-  ros::Subscriber sub_orientation = n.subscribe("/ak2/imu/rpy", 1, orientationCallback);
+  ros::Subscriber sub_orientation = n.subscribe("/imu/rpy", 1, orientationCallback);
   ros::Subscriber sub_cloud = n.subscribe<PointCloud<PointXYZRGB>>(POINTCLOUD_ROSTOPIC, 1, pointcloudCallback);
 
   pub_cloud = n.advertise<PointCloud<PointXYZI>>("/ranger/brinkmanship/points", 1);
