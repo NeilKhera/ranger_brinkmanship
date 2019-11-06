@@ -21,3 +21,4 @@ target_link_libraries(ranger_brinkmanship
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
 )
+add_dependencies(ranger_brinkmanship ${ranger_brinkmanship_EXPORTED_TARGETS})
