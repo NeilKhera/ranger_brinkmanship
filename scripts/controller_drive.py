@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
 import rospy
+import serial
 from roboclaw.roboclaw import RoboClaw
 from std_msgs.msg import Bool
 from sensor_msgs.msg import Joy
 
-class XboxDriver(object):
+class ControllerDriver(object):
     DRIVE_SPEED = 5000
     DRIVE_STEER = 1000
     DRIVE_ACCEL = 100
@@ -35,12 +36,13 @@ class XboxDriver(object):
     DRIVE_QPPR = 6630
 
     def __init__(self):
+        ser = serial.Serial('/dev/ttyACM0')
         self._roboclaws = {
             'front': RoboClaw("/dev/front", 115200),
             'rear': RoboClaw("/dev/rear", 115200),
         }
-        
-        rospy.init_node('xbox_driver')
+
+        rospy.init_node('controller_driver')
         rospy.on_shutdown(self._shutdown_callback)
 
         for claw in self._roboclaws.values():
@@ -78,15 +80,18 @@ class XboxDriver(object):
             claw.SetM2DefaultAccel(self.DRIVE_ACCEL)
 
         self.safe = True
-        rospy.Subscriber('/ranger/brinkmanship/go', Bool, self._safeguard_callback)
-        rospy.Subscriber('/joy', Joy, self._drive_callback)
+        #rospy.Subscriber('/ranger/brinkmanship/go', Bool, self._safeguard_callback)
 
-        self.drive_enabled = False
-        self.safeguarded = False
-        rospy.Timer(rospy.Duration(0.5), self._timer_callback)
+        self.drive_enabled = True
+        self.safeguarded = True
+        #rospy.Timer(rospy.Duration(0.5), self._timer_callback)
 
-        rospy.loginfo("XboxDriver: Started")
-        rospy.spin()
+        rospy.loginfo("ControllerDriver: Started")
+ 
+        while not rospy.is_shutdown():
+            msg = self.ser.readline()
+            _drive_callback(msg)
+            rospy.sleep(0.1)
 
     def _timer_callback(self, event):
         if self.safeguarded == True:
@@ -116,12 +121,11 @@ class XboxDriver(object):
         claw_front = self._roboclaws['front']
         claw_rear = self._roboclaws['rear']
 
-        if msg.buttons[2] == 1:
-            claw_front.SpeedM2(0)
-            claw_rear.SpeedM2(0)
-        else:
-            speed_value = self.DRIVE_SPEED * msg.axes[1];
-            steer_value = self.DRIVE_STEER * msg.axes[3];
+        vals = list(map(int, msg.split(',')))
+
+        if vals[0] != 0 and vals[1] != 0:
+            speed_value = self.DRIVE_SPEED * (vals[0] - 1.5) * 2;
+            steer_value = self.DRIVE_STEER * (vals[1] - 1.5) * 2;
 
             claw_front.SpeedAccelDeccelPositionM1(0, 0, 0, int(steer_value), 1)
             claw_rear.SpeedAccelDeccelPositionM1(0, 0, 0, -int(steer_value), 1)
@@ -131,6 +135,7 @@ class XboxDriver(object):
 
     def _shutdown_callback(self):
         rospy.logwarn("Killing RoboClawDriver")
+        self.ser.close()
         for claw in self._roboclaws.values():
             claw.SpeedAccelDeccelPositionM1(0, 0, 0, 0, 1)
             claw.SpeedM2(0)
@@ -144,7 +149,7 @@ class XboxDriver(object):
         return int(value)
 
 if __name__ == '__main__':
-    try:
-        xd = XboxDriver()
-    except rospy.ROSInterruptException:
-        pass
+  try:
+    cd = ControllerDriver()
+  except rospy.ROSInterruptException:
+    pass
