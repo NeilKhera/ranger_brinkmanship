@@ -2,7 +2,7 @@
 <package format="2">
   <name>ranger_brinkmanship</name>
   <version>1.0.0</version>
-  <description>The ranger_brinkmanship package</description>
+  <description>ROS Package for safeguarding rover from drops, steep slopes, and non-traversable obstacles.</description>
 
   <maintainer email="nkhera@andrew.cmu.edu">Neil Khera</maintainer>
   <license>BSD</license>
@@ -24,5 +24,4 @@
   <exec_depend>libpcl-all</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>message_runtime</exec_depend>
-
 </package>
